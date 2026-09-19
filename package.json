@@ -1,0 +1,30 @@
+{
+  "name": "vampiresurvivorsslop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Mobile-first isometric survivors-like in F# / Fable with ECS and co-op multiplayer",
+  "scripts": {
+    "restore": "dotnet tool restore",
+    "clean": "dotnet fable clean src/Client --yes",
+    "prebuild:fable": "dotnet tool restore",
+    "build:fable": "dotnet fable src/Client --outDir build/client --lang js",
+    "watch:fable": "dotnet fable watch src/Client --outDir build/client --lang js",
+    "dev": "concurrently -k -n fable,vite -c blue,magenta \"npm:watch:fable\" \"vite\"",
+    "build": "npm run build:fable && vite build",
+    "preview": "vite preview --host",
+    "typecheck": "dotnet build src/Client/Client.fsproj -v quiet --nologo",
+    "test:sim": "node tests/sim-smoke.mjs",
+    "test": "npm run build && npm run test:sim",
+    "test:browser": "node tests/browser-check.mjs"
+  },
+  "dependencies": {
+    "pixi.js": "^8.21.0"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5",
+    "vite": "^8.3.0",
+    "playwright": "^1.63.0",
+    "wait-on": "^9.0.1"
+  }
+}

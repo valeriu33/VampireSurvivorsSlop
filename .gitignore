@@ -1,0 +1,21 @@
+# Node
+node_modules/
+dist/
+.vite/
+
+# Fable output (JS generated from F#; never committed)
+.fable/
+fable_modules/
+build/
+*.fs.js
+*.fs.js.map
+
+# .NET
+bin/
+obj/
+*.user
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    This project is compiled TWICE:
+      * by Fable, into the browser bundle (client-side prediction), and
+      * by the .NET SDK, into the authoritative server (Phase 4).
+    Nothing in here may reference the DOM, Pixi, or System.Threading.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <WarningLevel>5</WarningLevel>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Core.fs" />
+    <Compile Include="Ecs.fs" />
+    <Compile Include="Content.fs" />
+    <Compile Include="Sim.fs" />
+    <Compile Include="Systems.fs" />
+    <Compile Include="Step.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Fable.Core" Version="5.2.0" />
+  </ItemGroup>
+
+</Project>

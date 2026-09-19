@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <WarningLevel>5</WarningLevel>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Interop/Pixi.fs" />
+    <Compile Include="Interop/Browser.fs" />
+    <Compile Include="Render/Iso.fs" />
+    <Compile Include="Render/Atlas.fs" />
+    <Compile Include="Render/Renderer.fs" />
+    <Compile Include="Input/Joystick.fs" />
+    <Compile Include="Hud/Hud.fs" />
+    <Compile Include="Main.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Shared/Shared.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Fable.Core" Version="5.2.0" />
+    <PackageReference Include="Fable.Browser.Dom" Version="2.20.0" />
+  </ItemGroup>
+
+</Project>

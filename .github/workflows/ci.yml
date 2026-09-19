@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fable 5 ships as a .NET 10 tool; the Shared project targets net8.0 and
+      # builds fine under it.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      # Proves the shared simulation still compiles for the server target,
+      # which is the whole point of keeping it free of browser APIs.
+      - name: Build shared simulation for .NET
+        run: dotnet build src/Shared/Shared.fsproj -c Release --nologo
+
+      - name: Build client bundle
+        run: npm run build
+
+      # Runs the simulation headlessly for full-length runs: verifies the game
+      # actually plays, stays deterministic, recycles entity slots, and guards
+      # against a per-tick cost regression.
+      - name: Simulation smoke test
+        run: npm run test:sim
+
+      # The simulation test cannot see the renderer. This one boots the built
+      # bundle in a phone-sized headless Chromium and checks that things
+      # actually draw and respond to a drag.
+      - name: Install Chromium for browser test
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke test
+        run: |
+          npx vite preview --port 4173 --host 127.0.0.1 &
+          npx wait-on -t 60000 http://127.0.0.1:4173/
+          npm run test:browser
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-bundle
+          path: dist
+          retention-days: 7
