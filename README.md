@@ -26,6 +26,17 @@ npm run typecheck  # F# typecheck without emitting JS
 npm test           # build + headless simulation test
 ```
 
+### Deploying
+
+`dist/` is a plain static site — any static host will serve it.
+
+For hosts that serve a **single file**, `npm run build:standalone` emits
+`dist-standalone/game.html`: the stylesheet and the whole JS bundle inlined into
+one ~560 KB page, with no doctype/html/body wrapper, so a host that supplies its
+own document skeleton can serve it directly. It uses a separate Vite config with
+`inlineDynamicImports`, because Pixi's lazy WebGL/WebGPU backends would otherwise
+split the bundle across several chunks.
+
 ### Toolchain
 
 | Tool | Version | Notes |

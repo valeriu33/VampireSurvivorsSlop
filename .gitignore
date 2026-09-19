@@ -1,6 +1,7 @@
 # Node
 node_modules/
 dist/
+dist-standalone/
 .vite/
 
 # Fable output (JS generated from F#; never committed)

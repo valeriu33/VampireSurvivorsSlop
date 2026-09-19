@@ -16,7 +16,8 @@
     "typecheck": "dotnet build src/Client/Client.fsproj -v quiet --nologo",
     "test:sim": "node tests/sim-smoke.mjs",
     "test": "npm run build && npm run test:sim",
-    "test:browser": "node tests/browser-check.mjs"
+    "test:browser": "node tests/browser-check.mjs",
+    "build:standalone": "npm run build:fable && vite build --config vite.standalone.config.js && node tools/bundle-standalone.mjs"
   },
   "dependencies": {
     "pixi.js": "^8.21.0"
