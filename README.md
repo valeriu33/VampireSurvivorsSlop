@@ -26,6 +26,23 @@ npm run typecheck  # F# typecheck without emitting JS
 npm test           # build + headless simulation test
 ```
 
+### Feel
+
+**Hit feedback.** A struck entity swaps to a white silhouette baked into the
+atlas alongside its normal frames — same draw call, no additive second pass,
+and it reads as an impact rather than the colour shift a tint could manage.
+Damage numbers spawn as one entity per digit, so they inherit integration,
+lifetime and depth sorting from the existing systems instead of needing a text
+renderer. Deaths leave a puff tinted to whatever died. Knockback was tripled;
+at its old strength a hit read as a number changing rather than a blow landing.
+
+**Sound** is synthesised at runtime — oscillators, envelopes and one shared
+noise buffer — so the game ships no audio assets and fetches nothing. The hard
+constraint is rate, not fidelity: a nova landing in a crowd resolves a hundred
+hits in a tick, so every sound kind is rate-limited and the mixer has a
+per-frame voice ceiling. Gem pickups climb in pitch while gems keep arriving,
+which turns hoovering up a big drop into a run of notes.
+
 ### Performance overlay
 
 Tap the stopwatch chip below the HUD bars, press **P** on desktop, or append
@@ -90,7 +107,15 @@ npm run test:browser                   # real Chromium, phone viewport
 plays full 5-minute runs with scripted input. It asserts the game is actually
 playable (kills, levels, upgrades acquired), that the player can die, that
 entity slots are recycled rather than leaked, that the same seed reproduces a
-run bit for bit, and that per-tick cost has not regressed.
+run bit for bit, that the event ring saturates at its cap instead of growing,
+and that per-tick cost has not regressed.
+
+It also measures **how long a first run lasts** — playing without god mode,
+moving but not kiting cleanly, taking whichever upgrade is offered first. That
+check exists because the balance had only ever been validated with god mode on,
+and an actual first run was lasting **39 seconds**. It now lands around 130s
+for that deliberately mediocre play, which a coherent build and real kiting
+should extend several times over.
 
 **`tests/browser-check.mjs`** boots the built bundle in a phone-sized headless
 Chromium, drives the joystick with real pointer events, and checks what only a
@@ -101,6 +126,15 @@ level-up card appears with three choices. It also writes screenshots.
 It drives the stick in an orbit rather than a straight line, and polls for the
 level-up card instead of sleeping a fixed span — a straight-line hold outruns
 its own XP gems, which made the assertion flaky.
+
+It also wraps `AudioContext` before the page loads and counts the nodes the
+synth creates. Sound is inaudible from a headless browser and produces no
+visible output, so counting oscillators is the only way to know it fires at all
+— and it catches the noise buffer being rebuilt per sound rather than once.
+
+`npm run capture -- <url> <prefix> [seconds]` plays for a while and screenshots
+mid-combat. A boot screenshot shows an empty field, which is exactly the state
+that hides every problem worth seeing.
 
 Note that **frame timings from this test are meaningless**: headless Chromium
 rasterises in software, so the compositor cost lands in `other` and reports
@@ -136,6 +170,22 @@ src/Client/      F# — browser only
   Hud/             DOM overlay
   Main.fs          Bootstrap and frame loop
 ```
+
+### How the simulation talks to the presentation layer
+
+The simulation cannot call into audio or spawn cosmetic entities — it compiles
+to the server too. Instead it appends plain numeric records (kind, x, y, value)
+to a fixed ring buffer, which the client drains once per frame to play sounds
+and spawn damage numbers and puffs.
+
+This is not only for sound. It is the same stream the Phase 4 server will
+serialize, so a client can present a hit or a death immediately rather than
+waiting for the next position snapshot to imply one.
+
+Cosmetic entities live in the same ECS world as everything else, which is why
+they need no systems of their own. When the server becomes authoritative,
+applying a snapshot will have to leave them alone rather than reconciling them
+away.
 
 ### Why the Shared project exists now, while the game is single-player
 
@@ -244,7 +294,7 @@ Recommended CC0 sources when you have unrestricted network access:
 | **0** | Toolchain, scaffold, CI | ✅ |
 | **1** | ECS core, iso renderer, camera, joystick | ✅ |
 | **2** | Vertical slice: enemies, weapons, XP, level-up, death | ✅ |
-| **3** | Content and polish: more weapons, elites, audio, juice, device perf pass | in progress — perf overlay done |
+| **3** | Content and polish: more weapons, elites, audio, juice, device perf pass | in progress — overlay, hit feedback and audio done |
 | **4** | Netcode foundation: .NET server, protocol, prediction/reconciliation, 2 players on one map | — |
 | **5** | Co-op: shared enemy pool, scaling by player count, revive, join-in-progress, AoI + delta compression | — |
 | **6** | Meta: characters, unlocks, persistence | — |

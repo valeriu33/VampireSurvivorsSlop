@@ -35,6 +35,28 @@ const ctx = await browser.newContext({
 })
 const page = await ctx.newPage()
 
+// Audio cannot be heard from a headless browser and produces no visible
+// output, so the only way to know sound is actually firing is to count the
+// nodes the synth creates. This wraps the constructor before the page loads.
+await ctx.addInitScript(() => {
+  const Real = window.AudioContext || window.webkitAudioContext
+  window.__audio = { contexts: 0, oscillators: 0, buffers: 0, sources: 0 }
+  if (!Real) return
+  function Wrapped(...args) {
+    const c = new Real(...args)
+    window.__audio.contexts++
+    const osc = c.createOscillator.bind(c)
+    const src = c.createBufferSource.bind(c)
+    const buf = c.createBuffer.bind(c)
+    c.createOscillator = () => { window.__audio.oscillators++; return osc() }
+    c.createBufferSource = () => { window.__audio.sources++; return src() }
+    c.createBuffer = (...a) => { window.__audio.buffers++; return buf(...a) }
+    return c
+  }
+  window.AudioContext = Wrapped
+  window.webkitAudioContext = Wrapped
+})
+
 const errors = []
 const logs = []
 page.on('console', (m) => { logs.push(`${m.type()}: ${m.text()}`); if (m.type() === 'error') errors.push(m.text()) })
@@ -143,12 +165,32 @@ if (URL.includes('perf')) {
   const simMs = parseFloat(rows.sim)
   const drawMs = parseFloat(rows.draw)
   check(midHud.perfVisible, 'perf overlay opens from ?perf=1')
-  check(midHud.perfRows.length === 11, `overlay reports ${midHud.perfRows.length} metrics`)
+  check(midHud.perfRows.length === 13, `overlay reports ${midHud.perfRows.length} metrics`)
   check(simMs >= 0 && simMs < 50, `sim time is plausible: ${rows.sim}`)
   check(drawMs >= 0 && drawMs < 50, `draw time is plausible: ${rows.draw}`)
   check(Number(rows.entities) > 0, `entity count is live: ${rows.entities}`)
 }
 check(overlay.levelUpVisible && overlay.choices === 3, 'level-up card offers three choices')
+const audio = await page.evaluate(() => window.__audio)
+check(audio.contexts === 1, `exactly one AudioContext created (${audio.contexts})`)
+check(audio.buffers === 1, `noise buffer built once, not per sound (${audio.buffers})`)
+check(audio.oscillators + audio.sources > 5,
+  `synth fired ${audio.oscillators} tones and ${audio.sources} noise bursts`)
+
+const muteWorks = await page.evaluate(() => {
+  const b = document.querySelector('.mute-btn')
+  if (!b) return null
+  const before = b.className
+  b.click()
+  const after = b.className
+  b.click()
+  return { before, after, restored: b.className }
+})
+check(
+  muteWorks && muteWorks.before !== muteWorks.after && muteWorks.before === muteWorks.restored,
+  `mute toggles and restores (${muteWorks?.before} -> ${muteWorks?.after})`
+)
+
 check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join('; ') : ''}`)
 
 console.log('')

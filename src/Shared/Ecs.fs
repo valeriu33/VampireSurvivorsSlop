@@ -117,6 +117,8 @@ type World =
       Scale: float32[]
       /// Seconds of white hit-flash remaining.
       Flash: float32[]
+      /// Per-entity multiply tint, 0xRRGGBB. 0xFFFFFF leaves the texture alone.
+      Tint: int[]
 
       // Allocation bookkeeping
       FreeList: int[]
@@ -158,6 +160,7 @@ let createWorld () =
       AnimT = f32 n
       Scale = f32 n
       Flash = f32 n
+      Tint = i32 n
       FreeList = i32 n
       FreeCount = 0
       Count = 0
@@ -206,6 +209,7 @@ let allocEntity (w: World) =
         setIx w.AnimT idx (0.0f)
         setIx w.Scale idx (1.0f)
         setIx w.Flash idx (0.0f)
+        setIx w.Tint idx 0xFFFFFF
         w.Live <- w.Live + 1
 
     idx

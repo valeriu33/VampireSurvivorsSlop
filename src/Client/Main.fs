@@ -60,6 +60,11 @@ let private start () =
         let input = emptyInput ()
         let stick = Vss.Client.Joystick.create hudRoot host
 
+        Vss.Client.Audio.init ()
+        // Browsers hold the audio context suspended until a gesture, and a
+        // gesture here means the first touch of the joystick.
+        addPointerListener host "pointerdown" (fun _ -> Vss.Client.Audio.unlock ())
+
         let applyViewport () =
             vw <- float32 window.innerWidth
             vh <- float32 window.innerHeight
@@ -142,9 +147,12 @@ let private start () =
             // delta above is what actually bounds the frame rate.
             let drawMs = now () - drawStart
 
+            // Turn this frame's simulation events into sound and cosmetics.
+            Vss.Client.Fx.present game (fun () -> Vss.Client.Hud.hurt hud t)
+
             Vss.Client.Hud.update hud game onPick
 
-            Vss.Client.Perf.sample perf rawFrameMs simMs drawMs steps game.World.Live renderer.PoolUsed
+            Vss.Client.Perf.sample perf rawFrameMs simMs drawMs steps game.World.Live game.EnemyCount game.GemCount renderer.PoolUsed
             Vss.Client.Perf.paint perf t (pixelRatio ()) (float vw) (float vh)
 
             window.requestAnimationFrame frame |> ignore

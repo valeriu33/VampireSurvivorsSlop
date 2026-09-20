@@ -9,11 +9,14 @@
   <ItemGroup>
     <Compile Include="Interop/Pixi.fs" />
     <Compile Include="Interop/Browser.fs" />
+    <Compile Include="Interop/WebAudio.fs" />
+    <Compile Include="Audio.fs" />
     <Compile Include="Render/Iso.fs" />
     <Compile Include="Render/Atlas.fs" />
     <Compile Include="Render/Renderer.fs" />
     <Compile Include="Input/Joystick.fs" />
     <Compile Include="Hud/Hud.fs" />
+    <Compile Include="Fx.fs" />
     <Compile Include="Hud/Perf.fs" />
     <Compile Include="Main.fs" />
   </ItemGroup>

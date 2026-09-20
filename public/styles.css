@@ -224,3 +224,62 @@ html, body {
 /* The first four rows are the verdict; the rest is the breakdown. */
 .perf-row:nth-child(-n + 4) .perf-v { color: var(--xp); font-weight: 600; }
 .perf-row:nth-child(4) { margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+
+/* ---- mute ------------------------------------------------------------- */
+
+.mute-btn {
+  position: absolute;
+  top: calc(var(--safe-top) + 58px);
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(14, 17, 26, 0.6);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0.55;
+}
+.mute-btn { position: relative; }
+.mute-btn.off { opacity: 0.32; color: var(--muted); }
+/* Struck through when muted, rather than swapping to an emoji that renders
+   differently on every platform. */
+.mute-btn.off::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
+  height: 1.5px;
+  background: currentColor;
+  transform: rotate(-38deg);
+}
+
+/* ---- hurt vignette ----------------------------------------------------- */
+/* Peripheral red on taking a hit. The player is watching the crowd, not their
+   own health bar, so damage has to register at the edge of vision. */
+
+.vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 240ms ease-out;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 0, 32, 0) 42%,
+    rgba(255, 0, 32, 0.28) 100%
+  );
+}
+.vignette.on {
+  opacity: 1;
+  transition: opacity 60ms ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vignette { transition: none; }
+}

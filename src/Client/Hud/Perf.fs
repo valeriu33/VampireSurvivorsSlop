@@ -46,10 +46,12 @@ type Perf =
 
       mutable LastPaint: float
       mutable Entities: int
+      mutable Enemies: int
+      mutable Gems: int
       mutable Sprites: int }
 
 let private RowLabels =
-    [| "fps"; "frame"; "worst"; "stutters"; "sim"; "draw"; "other"; "ticks"; "entities"; "sprites"; "viewport" |]
+    [| "fps"; "frame"; "worst"; "stutters"; "sim"; "draw"; "other"; "ticks"; "entities"; "enemies"; "gems"; "sprites"; "viewport" |]
 
 let create (hudRoot: HTMLElement) =
     let chip = document.createElement "button"
@@ -94,6 +96,8 @@ let create (hudRoot: HTMLElement) =
           Samples = 0
           LastPaint = 0.0
           Entities = 0
+          Enemies = 0
+          Gems = 0
           Sprites = 0 }
 
     let setVisible v =
@@ -117,7 +121,7 @@ let create (hudRoot: HTMLElement) =
 
 /// Record one frame. `frameMs` is the rAF delta, so it includes GPU wait and
 /// vsync; `simMs` and `drawMs` are CPU time only.
-let sample (p: Perf) (frameMs: float) (simMs: float) (drawMs: float) (ticks: int) (entities: int) (sprites: int) =
+let sample (p: Perf) (frameMs: float) (simMs: float) (drawMs: float) (ticks: int) (entities: int) (enemies: int) (gems: int) (sprites: int) =
     p.Frames.[p.Head] <- frameMs
     p.Head <- (p.Head + 1) % Window
     if p.Filled < Window then p.Filled <- p.Filled + 1
@@ -127,6 +131,8 @@ let sample (p: Perf) (frameMs: float) (simMs: float) (drawMs: float) (ticks: int
     p.TickAcc <- p.TickAcc + ticks
     p.Samples <- p.Samples + 1
     p.Entities <- entities
+    p.Enemies <- enemies
+    p.Gems <- gems
     p.Sprites <- sprites
 
 /// Fixed-decimal formatting. F#'s own float-to-string gives full precision
@@ -168,8 +174,10 @@ let paint (p: Perf) (nowMs: float) (dpr: float) (vw: float) (vh: float) =
         set 6 (fmt other 2 + " ms")
         set 7 (fmt (float p.TickAcc / samples) 2)
         set 8 (string p.Entities)
-        set 9 (string p.Sprites)
-        set 10 (fmt vw 0 + "x" + fmt vh 0 + " @" + fmt dpr 1 + "x")
+        set 9 (string p.Enemies)
+        set 10 (string p.Gems)
+        set 11 (string p.Sprites)
+        set 12 (fmt vw 0 + "x" + fmt vh 0 + " @" + fmt dpr 1 + "x")
 
         p.SimAcc <- 0.0
         p.RenderAcc <- 0.0

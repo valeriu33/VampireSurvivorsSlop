@@ -198,7 +198,11 @@ let draw (r: Renderer) (g: GameState) (alpha: float32) (nowSec: float32) =
                 let f = (ix w.Facing e)
                 if f < 0 then 0 else f % set.Textures.Length
 
-        sprite.texture <- (ix set.Textures frame)
+        // A struck entity swaps to its white silhouette for a few frames. Same
+        // draw call, no second pass, and it reads as an impact rather than the
+        // tint shift a multiply could manage.
+        let flashing = (ix w.Flash e) > 0.0f && set.Flash.Length > frame
+        sprite.texture <- if flashing then (ix set.Flash frame) else (ix set.Textures frame)
         sprite.anchor.set (0.5, set.AnchorY)
         sprite.visible <- true
         sprite.x <- float (ix r.ListX li)
@@ -227,17 +231,33 @@ let draw (r: Renderer) (g: GameState) (alpha: float32) (nowSec: float32) =
             sprite.scale.set (s, s)
             sprite.alpha <- float (1.0f - t)
             sprite.tint <- 0xFFFFFF
+        elif kind = Sprites.Digit then
+            // Damage numbers hold full opacity briefly, then fade, so the value
+            // is readable before it starts disappearing.
+            let t = clampf 0.0f 1.0f ((ix w.Life e) / DamageTextLife)
+            let sc = float (ix w.Scale e)
+            sprite.scale.set (sc, sc)
+            sprite.alpha <- float (clampf 0.0f 1.0f (t * 2.2f))
+            sprite.tint <- ix w.Tint e
+
+        elif kind = Sprites.Puff then
+            // Expands and fades where something died.
+            let t = 1.0f - clampf 0.0f 1.0f ((ix w.Life e) / PuffLife)
+            let sc = float (0.55f + 1.1f * t)
+            sprite.scale.set (sc, sc)
+            sprite.alpha <- float (1.0f - t)
+            sprite.tint <- ix w.Tint e
+
         else
             let mutable s = float (ix w.Scale e)
             let mutable a = 1.0
-            let mutable tint = 0xFFFFFF
+            let mutable tint = ix w.Tint e
 
-            if (ix w.Flash e) > 0.0f then
-                // Hit feedback: a brief pink tint plus a size pop. A true white
-                // flash would need an additive pass, which is not worth a second
-                // draw call per hit on mobile.
-                tint <- 0xFF9AA0
-                s <- s * 1.12
+            if flashing then
+                // The silhouette carries the flash; a size pop on top sells the
+                // impact without touching the colour.
+                tint <- 0xFFFFFF
+                s <- s * 1.14
 
             // Blink through the player's invulnerability window.
             if hasAny (ix w.Flags e) Comp.Player && (ix w.Cooldown e) > 0.0f then

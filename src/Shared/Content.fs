@@ -17,7 +17,11 @@ module Sprites =
     let [<Literal>] Bolt = 5
     let [<Literal>] Blade = 6
     let [<Literal>] Nova = 7
-    let [<Literal>] Count = 8
+    /// A single digit of a damage number; `Facing` carries which one.
+    let [<Literal>] Digit = 8
+    /// Burst left behind by a death.
+    let [<Literal>] Puff = 9
+    let [<Literal>] Count = 10
 
 /// Sprite kinds with 8 directional facings; everything else is omnidirectional.
 let isDirectional (sprite: int) =
@@ -31,17 +35,17 @@ let isDirectional (sprite: int) =
 // ---------------------------------------------------------------------------
 
 module Player =
-    let MaxHp : float32 = 100.0f
+    let MaxHp : float32 = 120.0f
     let Speed : float32 = 3.4f
     let Radius : float32 = 0.45f
     /// Radius at which gems start flying toward the player.
-    let PickupRadius : float32 = 1.7f
+    let PickupRadius : float32 = 3.0f
     /// Radius at which a gem is actually collected.
     let CollectRadius : float32 = 0.6f
     /// Invulnerability after taking a hit. Without this, standing in a crowd
     /// of 40 enemies deletes the player inside a single tick.
-    let IFrames : float32 = 0.55f
-    let RegenPerSecond : float32 = 0.35f
+    let IFrames : float32 = 0.8f
+    let RegenPerSecond : float32 = 0.8f
 
 // ---------------------------------------------------------------------------
 // Enemies
@@ -99,10 +103,10 @@ let hpScale (t: float32) = 1.0f + t / 110.0f
 let damageScale (t: float32) = 1.0f + t / 300.0f
 
 /// Seconds between spawn pulses, tightening over the run.
-let spawnInterval (t: float32) = clampf 0.18f 0.75f (0.75f - t / 260.0f)
+let spawnInterval (t: float32) = clampf 0.18f 1.20f (1.20f - t / 220.0f)
 
 /// Enemies per pulse.
-let spawnBatch (t: float32) = 3 + int (t / 20.0f)
+let spawnBatch (t: float32) = 1 + int (t / 38.0f)
 
 /// Hard cap on simultaneous enemies, so the frame budget holds no matter how
 /// long the run goes.
@@ -197,8 +201,8 @@ let upgrades : UpgradeDef[] =
 
 // ---- Bolt ----------------------------------------------------------------
 
-let boltDamage (lvl: int) = 14.0f + 5.0f * float32 (lvl - 1)
-let boltCooldown (lvl: int) = clampf 0.22f 2.0f (0.65f - 0.05f * float32 (lvl - 1))
+let boltDamage (lvl: int) = 18.0f + 6.0f * float32 (lvl - 1)
+let boltCooldown (lvl: int) = clampf 0.20f 2.0f (0.58f - 0.045f * float32 (lvl - 1))
 let boltCount (lvl: int) =
     1
     + (if lvl >= 2 then 1 else 0)
@@ -240,6 +244,34 @@ let magnetMul (lvl: int) = 1.0f + 0.35f * float32 lvl
 let hasteMul (lvl: int) = clampf 0.45f 1.0f (1.0f - 0.07f * float32 lvl)
 
 // ---------------------------------------------------------------------------
+// Hit feedback
+// ---------------------------------------------------------------------------
+
+/// How long a struck entity renders as a white silhouette. Short enough to read
+/// as an impact rather than a state change.
+let HitFlashTime : float32 = 0.07f
+
+// Knockback was previously too small to see against the enemies' own forward
+// pressure; a hit read as a number changing, not as a blow landing.
+let BoltKnockback : float32 = 7.5f
+let BladeKnockback : float32 = 5.5f
+/// Per-tick multiplier. Lower decays faster - this settles in about a third of
+/// a second, so a crowd recoils and closes again rather than sliding.
+let KnockbackDecay : float32 = 0.80f
+
+/// Damage numbers.
+let DamageTextLife : float32 = 0.62f
+let DamageTextRise : float32 = 2.4f
+/// Concurrent damage numbers allowed on screen. A nova landing in a dense crowd
+/// can resolve a hundred hits in one tick; past this the numbers stop being
+/// information and become fog.
+[<Literal>]
+let MaxDamageTexts = 44
+
+/// Death puff.
+let PuffLife : float32 = 0.3f
+
+// ---------------------------------------------------------------------------
 // Progression
 // ---------------------------------------------------------------------------
 
@@ -250,7 +282,22 @@ let hasteMul (lvl: int) = clampf 0.45f 1.0f (1.0f - 0.07f * float32 lvl)
 /// this lands a 5-minute run with a scattershot build around level 17.
 let xpToNext (level: int) =
     let l = float32 level
-    3.0f + 2.0f * l + 2.0f * l * l
+    3.0f + 2.0f * l + 1.6f * l * l
+
+/// Live gems past which the field starts hoovering itself up: every gem is
+/// drawn to the player regardless of distance, not just those inside the
+/// magnet radius.
+///
+/// Without this, a player who fights in one place leaves a permanent carpet of
+/// uncollected gems - measured at over 280 after a single minute. That is XP
+/// the player earned and cannot reach, hundreds of wasted entities, and a
+/// screen too busy to read. Sweeping them in costs nothing and reads as a
+/// reward rather than a cleanup.
+[<Literal>]
+let GemSoftCap = 90
+
+/// Pull applied to gems outside the magnet radius once the cap is exceeded.
+let GemFlushPull : float32 = 7.0f
 
 /// Gem colour tiers, purely cosmetic.
 let gemTier (xp: float32) =

@@ -23,6 +23,11 @@ type Hud =
       Choices: HTMLElement
       GameOver: HTMLElement
       GameOverStats: HTMLElement
+      Mute: HTMLElement
+      /// Red edge flash on taking a hit; driven by a class, not an animation
+      /// frame, so it costs nothing while idle.
+      Vignette: HTMLElement
+      mutable HurtUntil: float
       mutable LastSecond: int
       mutable LastLevel: int
       mutable LastKills: int
@@ -69,6 +74,20 @@ let create (root: HTMLElement) (onPick: int -> unit) (onRestart: unit -> unit) =
     top.appendChild hpBar |> ignore
     root.appendChild top |> ignore
 
+    // ---- mute ----
+    let mute = el "button" "mute-btn"
+    mute.addEventListener ("click", (fun e ->
+        e.stopPropagation ()
+        let muted = Vss.Client.Audio.toggleMuted ()
+        mute.className <- if muted then "mute-btn off" else "mute-btn"))
+    text mute "\u266A"
+    if Vss.Client.Audio.isMuted () then mute.className <- "mute-btn off"
+    root.appendChild mute |> ignore
+
+    // ---- hurt vignette ----
+    let vignette = el "div" "vignette"
+    root.appendChild vignette |> ignore
+
     // ---- level-up picker ----
     let levelUp = el "div" "overlay hidden"
     let luTitle = el "h2" ""
@@ -102,6 +121,9 @@ let create (root: HTMLElement) (onPick: int -> unit) (onRestart: unit -> unit) =
       Choices = choices
       GameOver = gameOver
       GameOverStats = goStats
+      Mute = mute
+      Vignette = vignette
+      HurtUntil = 0.0
       LastSecond = -1
       LastLevel = -1
       LastKills = -1
@@ -142,8 +164,17 @@ let private renderOffers (hud: Hud) (g: GameState) (onPick: int -> unit) =
 let private setHidden (e: HTMLElement) (hidden: bool) =
     if hidden then e.classList.add "hidden" else e.classList.remove "hidden"
 
+/// Flash the screen edge red. Called from the event drain on a player hit.
+let hurt (hud: Hud) (nowMs: float) =
+    hud.HurtUntil <- nowMs + 260.0
+    hud.Vignette.classList.add "on"
+
 let update (hud: Hud) (g: GameState) (onPick: int -> unit) =
     let w = g.World
+
+    if hud.HurtUntil > 0.0 && now () > hud.HurtUntil then
+        hud.HurtUntil <- 0.0
+        hud.Vignette.classList.remove "on"
 
     let sec = int g.Time
     if sec <> hud.LastSecond then
@@ -176,6 +207,10 @@ let update (hud: Hud) (g: GameState) (onPick: int -> unit) =
         renderOffers hud g onPick
         hud.OffersShown <- true
     elif g.Phase <> Phase.LevelUp then
+        if hud.OffersShown then
+            // Drop the spent buttons rather than leaving them in the hidden
+            // overlay, where they stay queryable and clickable.
+            hud.Choices.innerHTML <- ""
         hud.OffersShown <- false
 
     if g.Phase <> hud.LastPhase then
@@ -203,6 +238,11 @@ let update (hud: Hud) (g: GameState) (onPick: int -> unit) =
 /// Force the next `update` to redraw everything, after a restart resets values
 /// that would otherwise compare equal to their cached copies.
 let invalidate (hud: Hud) =
+    // Also drop any spent upgrade buttons. `invalidate` runs on picking a card,
+    // which clears OffersShown before `update` would otherwise get the chance -
+    // leaving the old buttons queryable inside the hidden overlay.
+    hud.Choices.innerHTML <- ""
+    hud.OffersShown <- false
     hud.LastSecond <- -1
     hud.LastLevel <- -1
     hud.LastKills <- -1

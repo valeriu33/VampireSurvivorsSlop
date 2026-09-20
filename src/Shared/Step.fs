@@ -72,6 +72,7 @@ let startRun (g: GameState) (seed: uint32) =
     g.XpNeeded <- xpToNext 1
     g.SpawnTimer <- 0.6f
     g.EnemyCount <- 0
+    g.GemCount <- 0
     g.OfferCount <- 0
     Array.fill g.Levels 0 g.Levels.Length 0
     Array.fill g.WeaponCd 0 g.WeaponCd.Length 0.0f

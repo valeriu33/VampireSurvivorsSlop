@@ -17,7 +17,8 @@
     "test:sim": "node tests/sim-smoke.mjs",
     "test": "npm run build && npm run test:sim",
     "test:browser": "node tests/browser-check.mjs",
-    "build:standalone": "npm run build:fable && vite build --config vite.standalone.config.js && node tools/bundle-standalone.mjs"
+    "build:standalone": "npm run build:fable && vite build --config vite.standalone.config.js && node tools/bundle-standalone.mjs",
+    "capture": "node tools/capture.mjs"
   },
   "dependencies": {
     "pixi.js": "^8.21.0"

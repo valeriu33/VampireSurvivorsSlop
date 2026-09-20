@@ -111,6 +111,42 @@ console.log('\n=== 1. A run actually plays ===')
   check(owned >= 3, `acquired ${owned} distinct upgrades`)
 }
 
+console.log('\n=== 1b. The presentation event stream ===')
+{
+  const g = createGame(2468)
+  startRun(g, 2468)
+  const input = emptyInput()
+  const ev = g.Events
+
+  // Nothing drains the buffer here, so a long run must saturate it at the cap
+  // and then refuse more rather than growing.
+  for (let t = 0; t < 120 * TICKS_PER_SECOND; t++) {
+    input.MoveX = Math.cos(t / 20)
+    input.MoveY = Math.sin(t / 20)
+    if (g.Player >= 0) g.World.Hp[g.Player] = g.World.MaxHp[g.Player]
+    step(g, input)
+    if (g.Phase === 1) applyUpgrade(g, g.Offers[0])
+  }
+
+  check(ev.Count === ev.Kind.length, `buffer saturated at its ${ev.Kind.length} cap and stopped`)
+
+  const kinds = new Set(Array.from(ev.Kind).slice(0, ev.Count))
+  // 0 EnemyHit, 1 EnemyDied, 2 BoltFired, 4 GemPickup.
+  check(
+    [0, 1, 2, 4].every((k) => kinds.has(k)),
+    `saw hit, death, fire and pickup events (kinds: ${[...kinds].sort().join(',')})`
+  )
+
+  // Draining is the client's job; a drained buffer must refill.
+  ev.Count = 0
+  for (let t = 0; t < TICKS_PER_SECOND; t++) {
+    if (g.Player >= 0) g.World.Hp[g.Player] = g.World.MaxHp[g.Player]
+    step(g, input)
+  }
+  check(ev.Count > 0, `buffer refills after a drain (${ev.Count} in one second)`)
+  check(ev.Count < ev.Kind.length, 'one second of play stays well inside the cap')
+}
+
 console.log('\n=== 2. The player can actually die ===')
 {
   // No god mode: standing still in the open should eventually be fatal.
@@ -126,6 +162,46 @@ console.log('\n=== 2. The player can actually die ===')
     ticks++
   }
   check(g.Phase === 2, `player died after ${(ticks / TICKS_PER_SECOND).toFixed(1)}s of standing still`)
+}
+
+console.log('\n=== 2b. How long a first run lasts ===')
+{
+  // The god-mode runs above prove the systems work; they say nothing about
+  // whether the game is beatable. This plays it the way someone would on a
+  // first attempt - keeps moving, but orbits through the crowd rather than
+  // kiting cleanly, and takes whichever upgrade is offered first.
+  //
+  // Before this existed the balance was only ever checked with god mode on,
+  // and an actual first run lasted 39 seconds.
+  const seeds = [11, 222, 3333, 44444]
+  const runs = seeds.map((seed) => {
+    const g = createGame(seed)
+    startRun(g, seed)
+    const input = emptyInput()
+    let t = 0
+    while (g.Phase !== 2 && t < 600 * TICKS_PER_SECOND) {
+      const a = (t / TICKS_PER_SECOND) * 0.45
+      input.MoveX = Math.cos(a)
+      input.MoveY = Math.sin(a)
+      step(g, input)
+      if (g.Phase === 1) applyUpgrade(g, g.Offers[0])
+      t++
+    }
+    return { secs: g.Time, level: g.Level }
+  })
+
+  const secs = runs.map((r) => r.secs).sort((a, b) => a - b)
+  const median = secs[Math.floor(secs.length / 2)]
+  console.log(`  runs: ${runs.map((r) => `${r.secs.toFixed(0)}s L${r.level}`).join('  ')}`)
+
+  // A wide band on purpose: this guards against a balance change that makes the
+  // game unplayable or trivial, not against ordinary tuning.
+  check(median > 70 && median < 330, `median first-run survival ${median.toFixed(0)}s`)
+  check(secs[0] > 40, `worst run still lasted ${secs[0].toFixed(0)}s`)
+  check(
+    runs.every((r) => r.level >= 4),
+    `every run reached at least level 4 (${runs.map((r) => r.level).join(',')})`
+  )
 }
 
 console.log('\n=== 3. Entity slots are recycled, not leaked ===')

@@ -21,6 +21,60 @@ type Input =
 
 let emptyInput () = { MoveX = 0.0f; MoveY = 0.0f }
 
+// ---------------------------------------------------------------------------
+// Presentation events
+// ---------------------------------------------------------------------------
+//
+// The simulation must stay free of any client dependency - it compiles to the
+// server too - so it cannot call into audio or spawn cosmetic entities itself.
+// Instead it appends plain numeric records to a ring buffer that the client
+// drains once per frame.
+//
+// This is not only for sound: it is the same stream the Phase 4 server will
+// serialize to tell clients what happened, so hits and deaths can be presented
+// without waiting for the next position snapshot to imply them.
+
+module Ev =
+    let [<Literal>] EnemyHit = 0
+    let [<Literal>] EnemyDied = 1
+    let [<Literal>] BoltFired = 2
+    let [<Literal>] NovaCast = 3
+    let [<Literal>] GemPickup = 4
+    let [<Literal>] PlayerHurt = 5
+    let [<Literal>] LevelUp = 6
+
+/// Capacity of the event ring. A frame that somehow produces more than this
+/// (a nova landing on a very large crowd) drops the overflow rather than
+/// growing: a missed tick of feedback is invisible, an allocation is not.
+[<Literal>]
+let MaxEvents = 384
+
+type Events =
+    { Kind: int[]
+      X: float32[]
+      Y: float32[]
+      /// Damage dealt, XP gained - whatever the kind implies.
+      Value: float32[]
+      mutable Count: int }
+
+let createEvents () =
+    { Kind = Array.zeroCreate MaxEvents
+      X = Array.zeroCreate MaxEvents
+      Y = Array.zeroCreate MaxEvents
+      Value = Array.zeroCreate MaxEvents
+      Count = 0 }
+
+let inline emit (e: Events) (kind: int) (x: float32) (y: float32) (value: float32) =
+    if e.Count < MaxEvents then
+        e.Kind.[e.Count] <- kind
+        e.X.[e.Count] <- x
+        e.Y.[e.Count] <- y
+        e.Value.[e.Count] <- value
+        e.Count <- e.Count + 1
+
+/// Called by the client after it has presented the frame's events.
+let inline clearEvents (e: Events) = e.Count <- 0
+
 type GameState =
     { World: World
       Grid: Grid
@@ -45,6 +99,8 @@ type GameState =
 
       mutable SpawnTimer: float32
       mutable EnemyCount: int
+      /// Live pickups, tracked so the sweep-in threshold costs no extra pass.
+      mutable GemCount: int
 
       /// Half-extents of the viewport, in SCREEN pixels, set by the client.
       ///
@@ -58,7 +114,11 @@ type GameState =
       mutable ViewHalfH: float32
 
       /// Scratch buffer used by the level-up roll; avoids allocating per level.
-      RollScratch: int[] }
+      RollScratch: int[]
+
+      /// Things that happened this frame, for the client to present.
+      /// See the Events section at the bottom of this file.
+      Events: Events }
 
 let createGame (seed: uint32) =
     { World = createWorld ()
@@ -79,9 +139,11 @@ let createGame (seed: uint32) =
       OfferCount = 0
       SpawnTimer = 0.0f
       EnemyCount = 0
+      GemCount = 0
       ViewHalfW = 200.0f
       ViewHalfH = 400.0f
-      RollScratch = Array.zeroCreate Up.Count }
+      RollScratch = Array.zeroCreate Up.Count
+      Events = createEvents () }
 
 // ---------------------------------------------------------------------------
 // Derived stats
@@ -206,6 +268,7 @@ let spawnGem (g: GameState) (x: float32) (y: float32) (xp: float32) =
         w.XpValue.[e] <- xp
         w.Sprite.[e] <- Sprites.Gem
         w.Facing.[e] <- gemTier xp
+        g.GemCount <- g.GemCount + 1
     e
 
 // ---------------------------------------------------------------------------

@@ -146,7 +146,8 @@ let private nearestEnemy (w: World) (x: float32) (y: float32) =
 let inline private damageEnemy (g: GameState) (e: int) (amount: float32) =
     let w = g.World
     setIx w.Hp e ((ix w.Hp e) - amount)
-    setIx w.Flash e (0.08f)
+    setIx w.Flash e HitFlashTime
+    emit g.Events Ev.EnemyHit (ix w.Px e) (ix w.Py e) amount
     if (ix w.Hp e) <= 0.0f then killEntity w e
 
 /// Keep the live blade entities in sync with the Blades upgrade level.
@@ -203,6 +204,7 @@ let weaponSystem (g: GameState) (dt: float32) =
                         let s = sin off
                         spawnBolt g px py (bx * c - by * s) (bx * s + by * c) dmg pierce |> ignore
                         k <- k + 1
+                    emit g.Events Ev.BoltFired px py (float32 n)
                     setIx g.WeaponCd (Up.Bolt) (boltCooldown boltLvl * cdMul)
             else
                 // Nothing to shoot at; retry shortly rather than burning the volley.
@@ -217,6 +219,7 @@ let weaponSystem (g: GameState) (dt: float32) =
             let r = novaRadius novaLvl
             let dmg = novaDamage novaLvl * dmgMul
             spawnNovaVisual g px py r |> ignore
+            emit g.Events Ev.NovaCast px py r
             // Instantaneous, so no re-hit gate is needed.
             let nb = queryBuckets g.Grid px py r
             let mutable b = 0
@@ -271,8 +274,8 @@ let integrateSystem (g: GameState) (dt: float32) =
             setIx w.Px i ((ix w.Px i) + ((ix w.Vx i) + (ix w.Kx i)) * dt)
             setIx w.Py i ((ix w.Py i) + ((ix w.Vy i) + (ix w.Ky i)) * dt)
             // Exponential-ish knockback decay.
-            setIx w.Kx i ((ix w.Kx i) * 0.86f)
-            setIx w.Ky i ((ix w.Ky i) * 0.86f)
+            setIx w.Kx i ((ix w.Kx i) * KnockbackDecay)
+            setIx w.Ky i ((ix w.Ky i) * KnockbackDecay)
             let spd = len (ix w.Vx i) (ix w.Vy i)
             if spd > 0.05f then setIx w.AnimT i ((ix w.AnimT i) + dt * spd)
         i <- i + 1
@@ -338,8 +341,8 @@ let projectileSystem (g: GameState) (_dt: float32) =
                             let dy = (ix w.Vy i)
                             let vl = len dx dy
                             if vl > 0.0001f then
-                                setIx w.Kx j ((ix w.Kx j) + dx / vl * 3.0f)
-                                setIx w.Ky j ((ix w.Ky j) + dy / vl * 3.0f)
+                                setIx w.Kx j ((ix w.Kx j) + dx / vl * BoltKnockback)
+                                setIx w.Ky j ((ix w.Ky j) + dy / vl * BoltKnockback)
                             // Remembering only the last victim is enough: a
                             // pierce count of 1-2 never re-crosses a body it
                             // already left.
@@ -387,8 +390,8 @@ let orbiterSystem (g: GameState) (_dt: float32) =
                             let dy = (ix w.Py j) - y
                             let d = len dx dy
                             if d > 0.0001f then
-                                setIx w.Kx j ((ix w.Kx j) + dx / d * 2.5f)
-                                setIx w.Ky j ((ix w.Ky j) + dy / d * 2.5f)
+                                setIx w.Kx j ((ix w.Kx j) + dx / d * BladeKnockback)
+                                setIx w.Ky j ((ix w.Ky j) + dy / d * BladeKnockback)
                     k <- k + 1
                 b <- b + 1
         i <- i + 1
@@ -421,6 +424,7 @@ let playerContactSystem (g: GameState) (_dt: float32) =
                     setIx w.Hp p ((ix w.Hp p) - (ix w.Damage j))
                     setIx w.Cooldown p (Player.IFrames)
                     setIx w.Flash p (0.18f)
+                    emit g.Events Ev.PlayerHurt x y (ix w.Damage j)
                     hit <- true
                     if (ix w.Hp p) <= 0.0f then
                         setIx w.Hp p (0.0f)
@@ -442,6 +446,9 @@ let pickupSystem (g: GameState) (dt: float32) =
     let magnet = pickupRadius g
     let magnet2 = magnet * magnet
     let collect2 = Player.CollectRadius * Player.CollectRadius
+    // Past the cap the magnet has no range limit, so a littered field clears
+    // itself instead of stranding XP the player already earned.
+    let flushing = g.GemCount > GemSoftCap
 
     let mutable i = 0
     while i < w.Count do
@@ -452,6 +459,7 @@ let pickupSystem (g: GameState) (dt: float32) =
             let d2 = lenSq dx dy
             if d2 <= collect2 then
                 g.Xp <- g.Xp + (ix w.XpValue i)
+                emit g.Events Ev.GemPickup (ix w.Px i) (ix w.Py i) (ix w.XpValue i)
                 killEntity w i
             elif d2 <= magnet2 then
                 let d = sqrt d2
@@ -459,6 +467,11 @@ let pickupSystem (g: GameState) (dt: float32) =
                 let pull = 6.0f + 10.0f * (1.0f - d / magnet)
                 setIx w.Vx i (dx / d * pull)
                 setIx w.Vy i (dy / d * pull)
+            elif flushing then
+                let d = sqrt d2
+                if d > 0.0001f then
+                    setIx w.Vx i (dx / d * GemFlushPull)
+                    setIx w.Vy i (dy / d * GemFlushPull)
             else
                 // Drift to a stop once out of range.
                 setIx w.Vx i ((ix w.Vx i) * (1.0f - 6.0f * dt))
@@ -560,10 +573,15 @@ let sweepSystem (g: GameState) =
     while i < w.Count do
         let f = (ix w.Flags i)
         if hasAll f (Comp.Alive ||| Comp.Dead) then
+            if hasAny f Comp.Pickup then g.GemCount <- g.GemCount - 1
+
             if hasAny f Comp.Enemy then
                 g.EnemyCount <- g.EnemyCount - 1
                 if (ix w.Hp i) <= 0.0f then
                     g.Kills <- g.Kills + 1
+                    // Carry the sprite id so the client can tint the death puff
+                    // to match whatever just died.
+                    emit g.Events Ev.EnemyDied (ix w.Px i) (ix w.Py i) (float32 (ix w.Sprite i))
                     // Spawn before freeing so the gem cannot land in this slot.
                     spawnGem g (ix w.Px i) (ix w.Py i) (ix w.XpValue i) |> ignore
             freeEntity w i
@@ -581,7 +599,11 @@ let levelSystem (g: GameState) =
         g.Level <- g.Level + 1
         g.XpNeeded <- xpToNext g.Level
         // Everything maxed: keep playing rather than showing an empty picker.
-        if rollOffers g > 0 then g.Phase <- Phase.LevelUp
+        if rollOffers g > 0 then
+            g.Phase <- Phase.LevelUp
+            let w = g.World
+            let p = g.Player
+            if p >= 0 then emit g.Events Ev.LevelUp (ix w.Px p) (ix w.Py p) (float32 g.Level)
 
 let applyUpgrade (g: GameState) (id: int) =
     if id >= 0 && id < Up.Count && (ix g.Levels id) < (ix upgrades id).MaxLevel then
