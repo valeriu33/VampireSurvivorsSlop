@@ -223,7 +223,68 @@ check(
 check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join('; ') : ''}`)
 
 console.log('')
-console.log(`screenshots written to ${OUT}-{boot,playing,levelup}.png`)
+// ---- boss arrival, in a second short session -----------------------------
+// Bosses are gated on elapsed time, so `?skip` fast-forwards the clock rather
+// than spending two real minutes waiting for the first one. The skip advances
+// difficulty without granting levels, so the run is brutal - which is fine,
+// the point is only that the boss arrives and the HUD tracks it.
+{
+  const bossUrl = URL.split('?')[0] + '?skip=118'
+  const bp = await ctx.newPage()
+  await bp.goto(bossUrl, { waitUntil: 'networkidle' })
+  await bp.waitForTimeout(500)
+  await bp.mouse.move(195, 620)
+  await bp.mouse.down()
+
+  let seen = null
+  const until = Date.now() + 25000
+  while (Date.now() < until) {
+    seen = await bp.evaluate(() => {
+      const wrap = document.querySelector('.boss-wrap')
+      if (!wrap || wrap.classList.contains('hidden')) return null
+      const fill = wrap.querySelector('span')
+      return { width: fill?.style.width ?? '', label: wrap.textContent }
+    })
+    if (seen) break
+    await bp.waitForTimeout(200)
+  }
+  await bp.mouse.up()
+
+  check(!!seen, `boss arrived and the HUD bar appeared${seen ? ` (${seen.width})` : ''}`)
+
+  // The header grows when the boss bar appears. Anything pinned at a fixed
+  // offset lands on top of it - which is exactly what the pause and perf
+  // buttons used to do, so assert the geometry rather than trusting it.
+  const overlap = await bp.evaluate(() => {
+    const r = (sel) => {
+      const el = document.querySelector(sel)
+      return el ? el.getBoundingClientRect() : null
+    }
+    const bars = r('.hud-top')
+    const controls = r('.hud-controls')
+    if (!bars || !controls) return null
+    const hits = (a, b) =>
+      a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+    return {
+      barsBottom: Math.round(bars.bottom),
+      controlsTop: Math.round(controls.top),
+      collides: hits(bars, controls),
+      barWide: Math.round(bars.width)
+    }
+  })
+  check(overlap && !overlap.collides,
+    `controls clear the bars (bars end ${overlap?.barsBottom}, controls start ${overlap?.controlsTop})`)
+  check(overlap && overlap.barWide > 300, `bars span the viewport (${overlap?.barWide}px)`)
+  if (seen) {
+    const pct = parseFloat(seen.width)
+    check(pct > 0 && pct <= 100, `boss health reads as a sane percentage (${seen.width})`)
+    check(seen.label.includes('BOSS'), 'boss bar is labelled')
+  }
+  await bp.screenshot({ path: `${OUT}-boss.png` })
+  await bp.close()
+}
+
+console.log(`screenshots written to ${OUT}-{boot,playing,levelup,boss}.png`)
 
 await browser.close()
 

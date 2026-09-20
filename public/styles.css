@@ -37,6 +37,19 @@ html, body {
   inset: 0;
   pointer-events: none; /* children opt back in individually */
   padding: calc(var(--safe-top) + 8px) 12px calc(var(--safe-bottom) + 8px);
+  display: flex;
+  flex-direction: column;
+  /* stretch, so the bars span the width; the perf panel opts out below. */
+  gap: 8px;
+}
+
+/* Buttons sit in flow under the bars. Pinning them to a fixed offset broke the
+   moment the header grew a boss bar. */
+.hud-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
 }
 
 /* ---- top bars ---- */
@@ -173,10 +186,6 @@ html, body {
    game, and positioned top-left where a thumb rarely travels. */
 
 .perf-chip {
-  position: absolute;
-  z-index: 2;
-  top: calc(var(--safe-top) + 58px);
-  left: 10px;
   width: 30px;
   height: 30px;
   padding: 0;
@@ -197,10 +206,7 @@ html, body {
 }
 
 .perf-panel {
-  position: absolute;
-  z-index: 2;
-  top: calc(var(--safe-top) + 94px);
-  left: 10px;
+  align-self: flex-start;
   min-width: 168px;
   padding: 9px 11px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -228,9 +234,7 @@ html, body {
 /* ---- mute ------------------------------------------------------------- */
 
 .mute-btn {
-  position: absolute;
-  top: calc(var(--safe-top) + 58px);
-  right: 10px;
+  order: 3;
   width: 30px;
   height: 30px;
   padding: 0;
@@ -245,6 +249,7 @@ html, body {
   opacity: 0.55;
 }
 .mute-btn { position: relative; }
+.perf-chip { order: 1; }
 .mute-btn.off { opacity: 0.32; color: var(--muted); }
 /* Struck through when muted, rather than swapping to an emoji that renders
    differently on every platform. */
@@ -299,9 +304,8 @@ html, body {
 /* ---- pause -------------------------------------------------------------- */
 
 .pause-btn {
-  position: absolute;
-  top: calc(var(--safe-top) + 58px);
-  right: 48px;
+  order: 2;
+  margin-left: auto;
   width: 30px;
   height: 30px;
   padding: 0;

@@ -105,6 +105,15 @@ let private start () =
 
         restart ()
 
+        // `?skip=120` starts the clock partway in. The run's content is gated
+        // on elapsed time - bosses at 2, 5, 8 and 11 minutes - so without this
+        // every check of the last boss costs eleven real minutes. It only moves
+        // the difficulty ramp forward, so it makes the game harder, never
+        // easier, and the world still starts empty and fills from scratch.
+        let skip = queryNumber "skip"
+        if not (System.Double.IsNaN skip) && skip > 0.0 then
+            game.Time <- float32 skip
+
         // Backgrounding the tab pauses rather than banking time, so returning
         // to a phone call does not resume mid-crowd on low health.
         document.addEventListener (
@@ -117,7 +126,7 @@ let private start () =
         window.addEventListener ("resize", (fun _ -> applyViewport ()))
         window.addEventListener ("orientationchange", (fun _ -> applyViewport ()))
 
-        let perf = Vss.Client.Perf.create hudRoot
+        let perf = Vss.Client.Perf.create hud.Controls hudRoot
 
         let stepSeconds = 1.0 / float TicksPerSecond
         let bootMs = now ()

@@ -53,7 +53,7 @@ type Perf =
 let private RowLabels =
     [| "fps"; "frame"; "worst"; "stutters"; "sim"; "draw"; "other"; "ticks"; "entities"; "enemies"; "gems"; "sprites"; "viewport" |]
 
-let create (hudRoot: HTMLElement) =
+let create (controls: HTMLElement) (hudRoot: HTMLElement) =
     let chip = document.createElement "button"
     chip.className <- "perf-chip"
     chip.textContent <- "⏱"
@@ -79,7 +79,8 @@ let create (hudRoot: HTMLElement) =
             panel.appendChild row |> ignore
             v)
 
-    hudRoot.appendChild chip |> ignore
+    // Chip joins the controls row; the panel sits in flow beneath it.
+    controls.appendChild chip |> ignore
     hudRoot.appendChild panel |> ignore
 
     let p =

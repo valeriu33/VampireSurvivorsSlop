@@ -25,6 +25,8 @@ type Hud =
       GameOverStats: HTMLElement
       GameOverBuild: HTMLElement
       Mute: HTMLElement
+      /// Row the perf chip joins, so it shares the same flow.
+      Controls: HTMLElement
       Pause: HTMLElement
       Paused: HTMLElement
       BossWrap: HTMLElement
@@ -93,6 +95,13 @@ let create (root: HTMLElement) (onPick: int -> unit) (onRestart: unit -> unit) (
     bossWrap.appendChild bossBar |> ignore
     top.appendChild bossWrap |> ignore
 
+    // ---- controls row ----
+    // In normal flow under the bars rather than pinned at a fixed offset: the
+    // header grows when a boss bar appears, and anything pinned to a magic
+    // offset collides with it.
+    let controls = el "div" "hud-controls"
+    root.appendChild controls |> ignore
+
     // ---- mute ----
     let mute = el "button" "mute-btn"
     mute.addEventListener ("click", (fun e ->
@@ -101,7 +110,7 @@ let create (root: HTMLElement) (onPick: int -> unit) (onRestart: unit -> unit) (
         mute.className <- if muted then "mute-btn off" else "mute-btn"))
     text mute "\u266A"
     if Vss.Client.Audio.isMuted () then mute.className <- "mute-btn off"
-    root.appendChild mute |> ignore
+    controls.appendChild mute |> ignore
 
     // ---- pause ----
     let pause = el "button" "pause-btn"
@@ -109,7 +118,7 @@ let create (root: HTMLElement) (onPick: int -> unit) (onRestart: unit -> unit) (
     pause.addEventListener ("click", (fun e ->
         e.stopPropagation ()
         onPause ()))
-    root.appendChild pause |> ignore
+    controls.appendChild pause |> ignore
 
     let paused = el "div" "overlay overlay-paused hidden"
     let pTitle = el "h2" ""
@@ -166,6 +175,7 @@ let create (root: HTMLElement) (onPick: int -> unit) (onRestart: unit -> unit) (
       GameOverStats = goStats
       GameOverBuild = goBuild
       Mute = mute
+      Controls = controls
       Pause = pause
       Paused = paused
       BossWrap = bossWrap

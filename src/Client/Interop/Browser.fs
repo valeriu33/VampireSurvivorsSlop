@@ -20,6 +20,10 @@ let pixelRatio () =
 
 let byId (id: string) : HTMLElement = document.getElementById id
 
+/// Read a numeric query parameter, or NaN when absent or unparseable.
+[<Emit("(function(){try{var v=new URLSearchParams(location.search).get($0);return v===null?NaN:Number(v)}catch(e){return NaN}})()")>]
+let queryNumber (name: string) : float = jsNative
+
 /// Whether the viewer has asked for reduced motion. Camera shake honours this;
 /// it is the one effect here likely to actually bother someone.
 [<Emit("(function(){try{return window.matchMedia('(prefers-reduced-motion: reduce)').matches}catch(e){return false}})()")>]

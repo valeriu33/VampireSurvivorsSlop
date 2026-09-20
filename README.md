@@ -72,6 +72,14 @@ everything unaccounted for: GPU wait, vsync, and the browser's own work. The
 panel rewrites at 5 Hz while the counters accumulate every frame, so reading the
 numbers does not distort them.
 
+### Dev affordances
+
+`?perf=1` opens the overlay on load. `?skip=120` starts the clock partway in —
+the run's content is time-gated (bosses at 2, 5, 8 and 11 minutes), so without
+it every check of the last boss costs eleven real minutes. The skip only moves
+the difficulty ramp forward, so it makes the game harder, never easier, and the
+world still starts empty.
+
 ### Deploying
 
 `dist/` is a plain static site — any static host will serve it.
@@ -147,8 +155,13 @@ synth creates. Sound is inaudible from a headless browser and produces no
 visible output, so counting oscillators is the only way to know it fires at all
 — and it catches the noise buffer being rebuilt per sound rather than once.
 
+It asserts HUD geometry too: the header grows when a boss bar appears, and
+anything pinned at a fixed offset lands on top of it — which is exactly what
+the pause and perf buttons used to do.
+
 `npm run capture -- <url> <prefix> [seconds]` plays for a while and screenshots
-mid-combat. A boot screenshot shows an empty field, which is exactly the state
+mid-combat. Note that headless Chromium runs slower than real time, so reaching
+a two-minute boss that way takes far longer than two minutes — use `?skip`. A boot screenshot shows an empty field, which is exactly the state
 that hides every problem worth seeing.
 
 Note that **frame timings from this test are meaningless**: headless Chromium
