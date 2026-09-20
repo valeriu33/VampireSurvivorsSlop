@@ -91,6 +91,8 @@ let private start () =
         window.addEventListener ("resize", (fun _ -> applyViewport ()))
         window.addEventListener ("orientationchange", (fun _ -> applyViewport ()))
 
+        let perf = Vss.Client.Perf.create hudRoot
+
         let stepSeconds = 1.0 / float TicksPerSecond
         let bootMs = now ()
         let mutable last = bootMs
@@ -98,16 +100,22 @@ let private start () =
 
         let rec frame (_: float) =
             let t = now ()
-            let mutable dt = (t - last) / 1000.0
+            // Keep the real delta for the perf overlay: the clamp below is a
+            // simulation guard, and feeding the clamped value to the instrument
+            // would make every long frame report as exactly the clamp.
+            let rawFrameMs = t - last
+            let mutable dt = rawFrameMs / 1000.0
             last <- t
 
             // A long gap means the tab was hidden, not that the game owes the
             // player four seconds of simulation.
             if dt > 0.25 then dt <- 0.25
 
+            let mutable steps = 0
+            let simStart = now ()
+
             if game.Phase = Phase.Playing then
                 acc <- acc + dt
-                let mutable steps = 0
                 while acc >= stepSeconds && steps < MaxCatchUpTicks do
                     Vss.Client.Joystick.readInto stick input
                     Vss.Shared.Step.step game input
@@ -122,11 +130,22 @@ let private start () =
                 // player reads their options.
                 acc <- 0.0
 
+            let simMs = now () - simStart
+
             let alpha = float32 (acc / stepSeconds)
             let nowSec = float32 ((t - bootMs) / 1000.0)
 
+            let drawStart = now ()
             Vss.Client.Renderer.draw renderer game alpha nowSec
+            // CPU time to build the render list and submit draws. The GPU runs
+            // on past this, so it is not the whole cost of a frame - the rAF
+            // delta above is what actually bounds the frame rate.
+            let drawMs = now () - drawStart
+
             Vss.Client.Hud.update hud game onPick
+
+            Vss.Client.Perf.sample perf rawFrameMs simMs drawMs steps game.World.Live renderer.PoolUsed
+            Vss.Client.Perf.paint perf t (pixelRatio ()) (float vw) (float vh)
 
             window.requestAnimationFrame frame |> ignore
 

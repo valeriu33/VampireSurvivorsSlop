@@ -100,6 +100,9 @@ html, body {
 .overlay {
   position: absolute;
   inset: 0;
+  /* Above the perf panel, which is appended after the overlays and would
+     otherwise punch through the level-up card's title. */
+  z-index: 5;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -164,3 +167,60 @@ html, body {
 .stats b { display: block; color: var(--ink); font-size: 20px; font-weight: 700; }
 
 .hidden { display: none !important; }
+
+/* ---- performance overlay ---------------------------------------------- */
+/* Debug instrumentation: kept visually quiet so it never competes with the
+   game, and positioned top-left where a thumb rarely travels. */
+
+.perf-chip {
+  position: absolute;
+  z-index: 2;
+  top: calc(var(--safe-top) + 58px);
+  left: 10px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(14, 17, 26, 0.6);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0.5;
+}
+.perf-chip.on {
+  opacity: 1;
+  color: var(--xp);
+  border-color: rgba(73, 182, 255, 0.5);
+}
+
+.perf-panel {
+  position: absolute;
+  z-index: 2;
+  top: calc(var(--safe-top) + 94px);
+  left: 10px;
+  min-width: 168px;
+  padding: 9px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(10, 12, 19, 0.88);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.perf-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+.perf-k { color: var(--muted); }
+.perf-v { color: var(--ink); }
+
+/* The first four rows are the verdict; the rest is the breakdown. */
+.perf-row:nth-child(-n + 4) .perf-v { color: var(--xp); font-weight: 600; }
+.perf-row:nth-child(4) { margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }

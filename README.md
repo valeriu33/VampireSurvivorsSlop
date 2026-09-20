@@ -26,9 +26,34 @@ npm run typecheck  # F# typecheck without emitting JS
 npm test           # build + headless simulation test
 ```
 
+### Performance overlay
+
+Tap the stopwatch chip below the HUD bars, press **P** on desktop, or append
+`?perf=1` to the URL to open a live readout:
+
+| | |
+|---|---|
+| `fps` / `frame` / `worst` / `stutters` | the verdict — average frame time, worst in the last ~2s, and how many of the last 120 frames ran over 20ms |
+| `sim` / `draw` / `other` | where the frame went |
+| `ticks` | simulation steps per frame; above 1.0 means the loop is catching up |
+| `entities` / `sprites` | live entity count and sprites actually drawn after culling |
+
+`sim` and `draw` are **CPU time only**. The GPU runs on past `app.render()`, so
+the real bound on frame rate is `frame` (the rAF delta), and `other` is
+everything unaccounted for: GPU wait, vsync, and the browser's own work. The
+panel rewrites at 5 Hz while the counters accumulate every frame, so reading the
+numbers does not distort them.
+
 ### Deploying
 
 `dist/` is a plain static site — any static host will serve it.
+
+**GitHub Pages** is wired up in `.github/workflows/pages.yml`: every push to the
+default branch builds, runs the simulation test, and deploys. It needs enabling
+once by hand — *Settings → Pages → Build and deployment → Source: **GitHub
+Actions*** — and until that is set, `configure-pages` fails with a 404. The
+build reads `PUBLIC_BASE` for the `/<repo>/` path prefix that project Pages
+serve from.
 
 For hosts that serve a **single file**, `npm run build:standalone` emits
 `dist-standalone/game.html`: the stylesheet and the whole JS bundle inlined into
@@ -70,8 +95,17 @@ run bit for bit, and that per-tick cost has not regressed.
 **`tests/browser-check.mjs`** boots the built bundle in a phone-sized headless
 Chromium, drives the joystick with real pointer events, and checks what only a
 browser can prove: the canvas honours `devicePixelRatio`, the stick tracks a
-drag, the HUD is live, and a level-up card appears with three choices. It also
-writes screenshots.
+drag, the HUD is live, the perf overlay reports plausible numbers, and a
+level-up card appears with three choices. It also writes screenshots.
+
+It drives the stick in an orbit rather than a straight line, and polls for the
+level-up card instead of sleeping a fixed span — a straight-line hold outruns
+its own XP gems, which made the assertion flaky.
+
+Note that **frame timings from this test are meaningless**: headless Chromium
+rasterises in software, so the compositor cost lands in `other` and reports
+~12fps regardless. It validates correctness, never performance. Real numbers
+have to come off a real device via the overlay.
 
 The browser layer is not redundant. Run against a build the simulation test
 declared healthy, it found three bugs:
@@ -210,7 +244,7 @@ Recommended CC0 sources when you have unrestricted network access:
 | **0** | Toolchain, scaffold, CI | ✅ |
 | **1** | ECS core, iso renderer, camera, joystick | ✅ |
 | **2** | Vertical slice: enemies, weapons, XP, level-up, death | ✅ |
-| **3** | Content and polish: more weapons, elites, audio, juice, device perf pass | — |
+| **3** | Content and polish: more weapons, elites, audio, juice, device perf pass | in progress — perf overlay done |
 | **4** | Netcode foundation: .NET server, protocol, prediction/reconciliation, 2 players on one map | — |
 | **5** | Co-op: shared enemy pool, scaling by player count, revive, join-in-progress, AoI + delta compression | — |
 | **6** | Meta: characters, unlocks, persistence | — |

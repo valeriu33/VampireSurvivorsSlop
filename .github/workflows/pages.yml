@@ -1,0 +1,62 @@
+name: Deploy to GitHub Pages
+
+# Requires Pages to be enabled once, by hand:
+#   Settings -> Pages -> Build and deployment -> Source: "GitHub Actions"
+# Until that is set, configure-pages fails with a 404.
+
+on:
+  push:
+    branches:
+      - main
+      - claude/vampire-survivors-mobile-game-091g4c
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race; a queued one supersedes the one in flight.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fable 5 is a .NET 10 tool; the F# projects target net8.0.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: dotnet tool restore
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          PUBLIC_BASE: /${{ github.event.repository.name }}/
+
+      # Catches a broken bundle before it replaces a working deploy.
+      - name: Simulation smoke test
+        run: npm run test:sim
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

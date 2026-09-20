@@ -20,7 +20,7 @@
  */
 import { chromium } from 'playwright'
 
-const URL = process.argv[2] || process.env.PREVIEW_URL || 'http://127.0.0.1:4173/'
+const URL = process.argv[2] || process.env.PREVIEW_URL || 'http://127.0.0.1:4173/?perf=1'
 const OUT = process.argv[3] || '/tmp/vss-shot'
 
 // Honour a preinstalled browser when Playwright's own download is unavailable.
@@ -59,21 +59,65 @@ const probe = await page.evaluate(() => {
 
 await page.screenshot({ path: `${OUT}-boot.png` })
 
-// Drive the joystick: press, drag, hold, so movement and combat actually run.
-await page.mouse.move(195, 600)
+// Drive the joystick the way a player actually does: press, then orbit the
+// thumb so the character circles rather than sprinting in one direction.
+// A straight-line hold outruns its own XP gems, which made the level-up
+// assertion below flaky.
+const ORIGIN_X = 195
+const ORIGIN_Y = 600
+const THROW = 55
+
+await page.mouse.move(ORIGIN_X, ORIGIN_Y)
 await page.mouse.down()
-await page.mouse.move(150, 540, { steps: 6 })
-await page.waitForTimeout(4000)
+
+const startedAt = Date.now()
+const orbit = async () => {
+  const a = ((Date.now() - startedAt) / 1000) * 0.8
+  await page.mouse.move(ORIGIN_X + Math.cos(a) * THROW, ORIGIN_Y + Math.sin(a) * THROW)
+}
+
+for (let i = 0; i < 34; i++) {
+  await orbit()
+  await page.waitForTimeout(120)
+}
 await page.screenshot({ path: `${OUT}-playing.png` })
 
 // A WebGL canvas cannot be read back with drawImage without
 // preserveDrawingBuffer, so ground coverage is judged from the screenshot
 // instead - see the colour histogram assertions at the end.
-const midHud = await page.evaluate(() => document.querySelector('#hud').innerText.replace(/\n+/g, ' | '))
+// Read the specific HUD fields rather than the whole overlay's innerText:
+// the perf panel also lives in #hud, and scraping the lot made this check
+// depend on what else happened to be on screen.
+const midHud = await page.evaluate(() => ({
+  timer: document.querySelector('.hud-timer')?.textContent ?? '',
+  kills: Number(document.querySelector('.hud-kills')?.textContent ?? 'NaN'),
+  level: document.querySelector('.hud-level')?.textContent ?? '',
+  perfRows: [...document.querySelectorAll('.perf-row')].map((r) =>
+    [r.querySelector('.perf-k').textContent, r.querySelector('.perf-v').textContent]
+  ),
+  perfVisible: !document.querySelector('.perf-panel')?.hasAttribute('hidden')
+}))
 const stickActive = await page.evaluate(() => document.querySelector('#stick')?.classList.contains('active'))
 
-// Hold longer to force a level-up card.
-await page.waitForTimeout(9000)
+// Keep playing until a level-up card appears, rather than sleeping a fixed
+// span and hoping. Bounded, so a genuine failure still terminates.
+const LEVEL_UP_TIMEOUT_MS = 45000
+const deadline = Date.now() + LEVEL_UP_TIMEOUT_MS
+let sawLevelUp = false
+while (Date.now() < deadline) {
+  const state = await page.evaluate(() => ({
+    choices: document.querySelectorAll('.choice').length,
+    // Phase.Dead hides the picker for good; stop waiting for something that
+    // is never coming.
+    dead: [...document.querySelectorAll('.overlay')].some(
+      (o) => !o.classList.contains('hidden') && o.querySelector('h1')
+    )
+  }))
+  if (state.choices === 3) { sawLevelUp = true; break }
+  if (state.dead) break
+  await orbit()
+  await page.waitForTimeout(150)
+}
 await page.mouse.up()
 const overlay = await page.evaluate(() => {
   const lu = document.querySelectorAll('.overlay')[0]
@@ -88,8 +132,22 @@ console.log('')
 check(probe.canvas, `canvas present at ${probe.w}x${probe.h} (2x backing store)`)
 check(probe.w === 780 && probe.h === 1688, 'canvas honours devicePixelRatio')
 check(probe.stickPresent && stickActive, 'joystick tracks a drag')
-check(/\d\d:\d\d/.test(midHud), `HUD is live: ${midHud}`)
-check(Number(midHud.split('|').pop().trim()) > 0, 'kills are accumulating')
+check(/^\d\d:\d\d$/.test(midHud.timer), `timer is running: ${midHud.timer}`)
+check(Number.isFinite(midHud.kills) && midHud.kills > 0, `kills are accumulating: ${midHud.kills}`)
+
+// The overlay is opened with ?perf=1 by the invocation below. Frame timings
+// are meaningless under headless rendering, so only assert that the instrument
+// reports plausible CPU numbers - the real figures come from a device.
+if (URL.includes('perf')) {
+  const rows = Object.fromEntries(midHud.perfRows)
+  const simMs = parseFloat(rows.sim)
+  const drawMs = parseFloat(rows.draw)
+  check(midHud.perfVisible, 'perf overlay opens from ?perf=1')
+  check(midHud.perfRows.length === 11, `overlay reports ${midHud.perfRows.length} metrics`)
+  check(simMs >= 0 && simMs < 50, `sim time is plausible: ${rows.sim}`)
+  check(drawMs >= 0 && drawMs < 50, `draw time is plausible: ${rows.draw}`)
+  check(Number(rows.entities) > 0, `entity count is live: ${rows.entities}`)
+}
 check(overlay.levelUpVisible && overlay.choices === 3, 'level-up card offers three choices')
 check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join('; ') : ''}`)
 
