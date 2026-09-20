@@ -127,11 +127,20 @@ let separationSystem (g: GameState) (_dt: float32) =
 // Weapons
 // ---------------------------------------------------------------------------
 
-/// Nearest living enemy to (x, y), or -1. Linear scan: this runs once per
-/// volley, not per frame, so the grid is not worth the setup.
-let private nearestEnemy (w: World) (x: float32) (y: float32) =
+/// Pick what to shoot at: a boss within focus range if there is one, otherwise
+/// the nearest enemy. Linear scan - this runs once per volley, not per frame,
+/// so the grid is not worth the setup.
+///
+/// The boss preference is what makes a boss a fight. Plain nearest-target
+/// picks out of a crowd of several hundred and never lands on the boss, so it
+/// only ever takes incidental splash.
+let private pickTarget (w: World) (x: float32) (y: float32) =
     let mutable best = -1
     let mutable bestD = System.Single.MaxValue
+    let mutable boss = -1
+    let mutable bossD = System.Single.MaxValue
+    let focus2 = BossFocusRange * BossFocusRange
+
     let mutable i = 0
     while i < w.Count do
         let f = (ix w.Flags i)
@@ -140,8 +149,18 @@ let private nearestEnemy (w: World) (x: float32) (y: float32) =
             if d < bestD then
                 bestD <- d
                 best <- i
+            if hasAny f Comp.Boss && d <= focus2 && d < bossD then
+                bossD <- d
+                boss <- i
         i <- i + 1
-    best
+
+    if boss >= 0 then boss else best
+
+/// Heavier things are shoved less.
+let inline private knockbackMul (flags: int) =
+    if hasAny flags Comp.Boss then BossKnockbackMul
+    elif hasAny flags Comp.Elite then EliteKnockbackMul
+    else 1.0f
 
 let inline private damageEnemy (g: GameState) (e: int) (amount: float32) =
     let w = g.World
@@ -185,7 +204,7 @@ let weaponSystem (g: GameState) (dt: float32) =
     if boltLvl > 0 then
         setIx g.WeaponCd (Up.Bolt) ((ix g.WeaponCd (Up.Bolt)) - dt)
         if (ix g.WeaponCd (Up.Bolt)) <= 0.0f then
-            let target = nearestEnemy w px py
+            let target = pickTarget w px py
             if target >= 0 then
                 let dx = (ix w.Px target) - px
                 let dy = (ix w.Py target) - py
@@ -341,8 +360,9 @@ let projectileSystem (g: GameState) (_dt: float32) =
                             let dy = (ix w.Vy i)
                             let vl = len dx dy
                             if vl > 0.0001f then
-                                setIx w.Kx j ((ix w.Kx j) + dx / vl * BoltKnockback)
-                                setIx w.Ky j ((ix w.Ky j) + dy / vl * BoltKnockback)
+                                let km = BoltKnockback * knockbackMul jf
+                                setIx w.Kx j ((ix w.Kx j) + dx / vl * km)
+                                setIx w.Ky j ((ix w.Ky j) + dy / vl * km)
                             // Remembering only the last victim is enough: a
                             // pierce count of 1-2 never re-crosses a body it
                             // already left.
@@ -390,8 +410,9 @@ let orbiterSystem (g: GameState) (_dt: float32) =
                             let dy = (ix w.Py j) - y
                             let d = len dx dy
                             if d > 0.0001f then
-                                setIx w.Kx j ((ix w.Kx j) + dx / d * BladeKnockback)
-                                setIx w.Ky j ((ix w.Ky j) + dy / d * BladeKnockback)
+                                let km = BladeKnockback * knockbackMul jf
+                                setIx w.Kx j ((ix w.Kx j) + dx / d * km)
+                                setIx w.Ky j ((ix w.Ky j) + dy / d * km)
                     k <- k + 1
                 b <- b + 1
         i <- i + 1
@@ -513,15 +534,60 @@ let spawnSystem (g: GameState) (dt: float32) =
     let mutable i = 0
     while i < w.Count do
         let f = (ix w.Flags i)
-        if hasAll f (Comp.Alive ||| Comp.Enemy) && not (hasAny f Comp.Dead) then
+        if hasAll f (Comp.Alive ||| Comp.Enemy)
+           && not (hasAny f (Comp.Dead ||| Comp.Boss)) then
             let dx = (ix w.Px i) - px
             let dy = (ix w.Py i) - py
             if abs (isoX dx dy) > cullW || abs (isoY dx dy) > cullH then killEntity w i
         i <- i + 1
 
+    // A boss that outstays its welcome leaves. `Hp > 0` tells the sweep this
+    // was a departure, not a kill, so it yields no XP - and the schedule and
+    // the spawn rate are both freed either way.
+    if g.Boss >= 0 then
+        g.BossTimer <- g.BossTimer - dt
+        if g.BossTimer <= 0.0f then killEntity w g.Boss
+
+    // A boss is due once the clock passes its slot and the previous one is
+    // gone. Holding it back while one is alive keeps the run from stacking
+    // bosses if the player is struggling.
+    if g.NextBoss < bossTimes.Length
+       && g.Time >= bossTimes.[g.NextBoss]
+       && g.Boss < 0 then
+        let a = nextAngle g.Rng
+        let ca = cos a
+        let sa = sin a
+        let tx = if abs ca > 1e-4f then g.ViewHalfW / abs ca else 1e9f
+        let ty = if abs sa > 1e-4f then g.ViewHalfH / abs sa else 1e9f
+        let t = (min tx ty) * 1.12f
+        let bx = px + screenToWorldX (ca * t) (sa * t)
+        let by = py + screenToWorldY (ca * t) (sa * t)
+        let b = spawnBoss g g.NextBoss bx by
+        g.NextBoss <- g.NextBoss + 1
+
+        // Shove the crowd out of the way as it lands, so the arrival is an
+        // event rather than one more body in the pile.
+        if b >= 0 then
+            let r2 = BossArrivalRadius * BossArrivalRadius
+            let mutable k = 0
+            while k < w.Count do
+                let kf = (ix w.Flags k)
+                if hasAll kf (Comp.Alive ||| Comp.Enemy)
+                   && not (hasAny kf (Comp.Dead ||| Comp.Boss)) then
+                    let dx = (ix w.Px k) - bx
+                    let dy = (ix w.Py k) - by
+                    let d2 = lenSq dx dy
+                    if d2 < r2 && d2 > 1e-4f then
+                        let d = sqrt d2
+                        let push = BossArrivalKnockback * (1.0f - d / BossArrivalRadius)
+                        setIx w.Kx k ((ix w.Kx k) + dx / d * push)
+                        setIx w.Ky k ((ix w.Ky k) + dy / d * push)
+                k <- k + 1
+
     g.SpawnTimer <- g.SpawnTimer - dt
     if g.SpawnTimer <= 0.0f then
-        g.SpawnTimer <- spawnInterval g.Time
+        // A boss fight needs firing lines, not a thicker crowd.
+        g.SpawnTimer <- spawnInterval g.Time * (if g.Boss >= 0 then BossSpawnSlowdown else 1.0f)
 
         // Weighted pick among the types unlocked at this point in the run.
         let mutable total = 0.0f
@@ -557,7 +623,8 @@ let spawnSystem (g: GameState) (dt: float32) =
             let t = (min tx ty) * nextRange g.Rng 1.05f 1.18f
             let sx = ca * t
             let sy = sa * t
-            spawnEnemy g pick (px + screenToWorldX sx sy) (py + screenToWorldY sx sy) |> ignore
+            let elite = nextFloat g.Rng < eliteChance g.Time
+            spawnEnemy g pick (px + screenToWorldX sx sy) (py + screenToWorldY sx sy) elite |> ignore
             n <- n + 1
 
 // ---------------------------------------------------------------------------
@@ -577,8 +644,14 @@ let sweepSystem (g: GameState) =
 
             if hasAny f Comp.Enemy then
                 g.EnemyCount <- g.EnemyCount - 1
+                if hasAny f Comp.Boss then g.Boss <- -1
+
                 if (ix w.Hp i) <= 0.0f then
                     g.Kills <- g.Kills + 1
+                    if hasAny f Comp.Boss then
+                        emit g.Events Ev.BossDied (ix w.Px i) (ix w.Py i) 0.0f
+                    elif hasAny f Comp.Elite then
+                        emit g.Events Ev.EliteDied (ix w.Px i) (ix w.Py i) 0.0f
                     // Carry the sprite id so the client can tint the death puff
                     // to match whatever just died.
                     emit g.Events Ev.EnemyDied (ix w.Px i) (ix w.Py i) (float32 (ix w.Sprite i))

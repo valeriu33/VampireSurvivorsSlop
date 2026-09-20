@@ -131,9 +131,10 @@ while (Date.now() < deadline) {
     choices: document.querySelectorAll('.choice').length,
     // Phase.Dead hides the picker for good; stop waiting for something that
     // is never coming.
-    dead: [...document.querySelectorAll('.overlay')].some(
-      (o) => !o.classList.contains('hidden') && o.querySelector('h1')
-    )
+    dead: (() => {
+      const go = document.querySelector('.overlay-gameover')
+      return !!go && !go.classList.contains('hidden')
+    })()
   }))
   if (state.choices === 3) { sawLevelUp = true; break }
   if (state.dead) break
@@ -141,9 +142,16 @@ while (Date.now() < deadline) {
   await page.waitForTimeout(150)
 }
 await page.mouse.up()
+// Select overlays by name, not by DOM order: adding the pause overlay shifted
+// the indices and silently pointed this at the wrong element.
 const overlay = await page.evaluate(() => {
-  const lu = document.querySelectorAll('.overlay')[0]
-  return { levelUpVisible: lu && !lu.classList.contains('hidden'), choices: document.querySelectorAll('.choice').length }
+  const lu = document.querySelector('.overlay-levelup')
+  return {
+    levelUpVisible: !!lu && !lu.classList.contains('hidden'),
+    choices: document.querySelectorAll('.choice').length,
+    hasPause: !!document.querySelector('.overlay-paused'),
+    hasGameOver: !!document.querySelector('.overlay-gameover')
+  }
 })
 await page.screenshot({ path: `${OUT}-levelup.png` })
 
@@ -171,6 +179,27 @@ if (URL.includes('perf')) {
   check(Number(rows.entities) > 0, `entity count is live: ${rows.entities}`)
 }
 check(overlay.levelUpVisible && overlay.choices === 3, 'level-up card offers three choices')
+check(overlay.hasPause && overlay.hasGameOver, 'pause and game-over overlays exist')
+
+// Pause is a phase, so the clock must actually stop. Dismiss the level-up card
+// first: the game is already halted while it is open, and pause deliberately
+// does nothing there.
+const pauseWorks = await page.evaluate(async () => {
+  const read = () => document.querySelector('.hud-timer')?.textContent
+  document.querySelector('.choice')?.click()
+  await new Promise((r) => setTimeout(r, 300))
+  document.querySelector('.pause-btn').click()
+  await new Promise((r) => setTimeout(r, 600))
+  const paused = document.querySelector('.overlay-paused')
+  const shown = !paused.classList.contains('hidden')
+  const t1 = read()
+  await new Promise((r) => setTimeout(r, 1200))
+  const t2 = read()
+  document.querySelector('.pause-btn').click()
+  return { shown, frozen: t1 === t2 }
+})
+check(pauseWorks.shown, 'pause overlay appears')
+check(pauseWorks.frozen, 'clock stops while paused')
 const audio = await page.evaluate(() => window.__audio)
 check(audio.contexts === 1, `exactly one AudioContext created (${audio.contexts})`)
 check(audio.buffers === 1, `noise buffer built once, not per sound (${audio.buffers})`)

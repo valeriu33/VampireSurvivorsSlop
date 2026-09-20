@@ -23,7 +23,13 @@ type Hud =
       Choices: HTMLElement
       GameOver: HTMLElement
       GameOverStats: HTMLElement
+      GameOverBuild: HTMLElement
       Mute: HTMLElement
+      Pause: HTMLElement
+      Paused: HTMLElement
+      BossWrap: HTMLElement
+      BossFill: HTMLElement
+      mutable LastBossPct: int
       /// Red edge flash on taking a hit; driven by a class, not an animation
       /// frame, so it costs nothing while idle.
       Vignette: HTMLElement
@@ -49,7 +55,7 @@ let private formatTime (t: float32) =
     let s = total % 60
     (if m < 10 then "0" else "") + string m + ":" + (if s < 10 then "0" else "") + string s
 
-let create (root: HTMLElement) (onPick: int -> unit) (onRestart: unit -> unit) =
+let create (root: HTMLElement) (onPick: int -> unit) (onRestart: unit -> unit) (onPause: unit -> unit) =
     // ---- top bar ----
     let top = el "div" "hud-top"
 
@@ -74,6 +80,19 @@ let create (root: HTMLElement) (onPick: int -> unit) (onRestart: unit -> unit) =
     top.appendChild hpBar |> ignore
     root.appendChild top |> ignore
 
+    // ---- boss health ----
+    // Shown only while a boss is alive. A boss with no visible health is just
+    // a large enemy that refuses to die.
+    let bossWrap = el "div" "boss-wrap hidden"
+    let bossLabel = el "div" "boss-label"
+    text bossLabel "BOSS"
+    let bossBar = el "div" "bar boss"
+    let bossFill = el "span" ""
+    bossBar.appendChild bossFill |> ignore
+    bossWrap.appendChild bossLabel |> ignore
+    bossWrap.appendChild bossBar |> ignore
+    top.appendChild bossWrap |> ignore
+
     // ---- mute ----
     let mute = el "button" "mute-btn"
     mute.addEventListener ("click", (fun e ->
@@ -84,12 +103,34 @@ let create (root: HTMLElement) (onPick: int -> unit) (onRestart: unit -> unit) =
     if Vss.Client.Audio.isMuted () then mute.className <- "mute-btn off"
     root.appendChild mute |> ignore
 
+    // ---- pause ----
+    let pause = el "button" "pause-btn"
+    text pause "\u2759\u2759"
+    pause.addEventListener ("click", (fun e ->
+        e.stopPropagation ()
+        onPause ()))
+    root.appendChild pause |> ignore
+
+    let paused = el "div" "overlay overlay-paused hidden"
+    let pTitle = el "h2" ""
+    text pTitle "Paused"
+    let pResume = el "button" "btn"
+    text pResume "Resume"
+    pResume.addEventListener ("click", (fun _ -> onPause ()))
+    let pRestart = el "button" "btn ghost"
+    text pRestart "Restart run"
+    pRestart.addEventListener ("click", (fun _ -> onRestart ()))
+    paused.appendChild pTitle |> ignore
+    paused.appendChild pResume |> ignore
+    paused.appendChild pRestart |> ignore
+    root.appendChild paused |> ignore
+
     // ---- hurt vignette ----
     let vignette = el "div" "vignette"
     root.appendChild vignette |> ignore
 
     // ---- level-up picker ----
-    let levelUp = el "div" "overlay hidden"
+    let levelUp = el "div" "overlay overlay-levelup hidden"
     let luTitle = el "h2" ""
     text luTitle "Level Up"
     let choices = el "div" "choices"
@@ -98,7 +139,7 @@ let create (root: HTMLElement) (onPick: int -> unit) (onRestart: unit -> unit) =
     root.appendChild levelUp |> ignore
 
     // ---- game over ----
-    let gameOver = el "div" "overlay hidden"
+    let gameOver = el "div" "overlay overlay-gameover hidden"
     let goTitle = el "h1" ""
     text goTitle "You Died"
     let goStats = el "div" "stats"
@@ -106,7 +147,9 @@ let create (root: HTMLElement) (onPick: int -> unit) (onRestart: unit -> unit) =
     text goBtn "Run it back"
     goBtn.addEventListener ("click", (fun _ -> onRestart ()))
     gameOver.appendChild goTitle |> ignore
+    let goBuild = el "div" "build-list"
     gameOver.appendChild goStats |> ignore
+    gameOver.appendChild goBuild |> ignore
     gameOver.appendChild goBtn |> ignore
     root.appendChild gameOver |> ignore
 
@@ -121,7 +164,13 @@ let create (root: HTMLElement) (onPick: int -> unit) (onRestart: unit -> unit) =
       Choices = choices
       GameOver = gameOver
       GameOverStats = goStats
+      GameOverBuild = goBuild
       Mute = mute
+      Pause = pause
+      Paused = paused
+      BossWrap = bossWrap
+      BossFill = bossFill
+      LastBossPct = -1
       Vignette = vignette
       HurtUntil = 0.0
       LastSecond = -1
@@ -201,6 +250,18 @@ let update (hud: Hud) (g: GameState) (onPick: int -> unit) =
             hud.LastHpPct <- hpPct
             setStyle hud.HpFill "width" (string hpPct + "%")
 
+    // Boss health, shown only while one is alive.
+    let boss = g.Boss
+    if boss >= 0 && hasAny (w.Flags.[boss]) Comp.Alive && w.MaxHp.[boss] > 0.0f then
+        let pct = int (100.0f * w.Hp.[boss] / w.MaxHp.[boss])
+        if pct <> hud.LastBossPct then
+            hud.LastBossPct <- pct
+            setStyle hud.BossFill "width" (string (max 0 pct) + "%")
+            hud.BossWrap.classList.remove "hidden"
+    elif hud.LastBossPct <> -1 then
+        hud.LastBossPct <- -1
+        hud.BossWrap.classList.add "hidden"
+
     // Offers are rolled fresh on every level-up, so redraw whenever we enter
     // the picker rather than trying to diff the offer ids.
     if g.Phase = Phase.LevelUp && not hud.OffersShown then
@@ -217,6 +278,7 @@ let update (hud: Hud) (g: GameState) (onPick: int -> unit) =
         hud.LastPhase <- g.Phase
         setHidden hud.LevelUp (g.Phase <> Phase.LevelUp)
         setHidden hud.GameOver (g.Phase <> Phase.Dead)
+        setHidden hud.Paused (g.Phase <> Phase.Paused)
 
         if g.Phase = Phase.Dead then
             hud.GameOverStats.innerHTML <- ""
@@ -235,6 +297,23 @@ let update (hud: Hud) (g: GameState) (onPick: int -> unit) =
             stat "kills" (string g.Kills)
             stat "level" (string g.Level)
 
+            // What the run was actually built out of. Without this the summary
+            // says how far you got but nothing about how you got there.
+            hud.GameOverBuild.innerHTML <- ""
+            let mutable any = false
+            for id in 0 .. Up.Count - 1 do
+                if g.Levels.[id] > 0 then
+                    any <- true
+                    let chip = el "span" "build-chip"
+                    let ic = el "span" "build-icon"
+                    text ic upgrades.[id].Icon
+                    let nm = el "span" ""
+                    text nm (upgrades.[id].Name + " " + string g.Levels.[id])
+                    chip.appendChild ic |> ignore
+                    chip.appendChild nm |> ignore
+                    hud.GameOverBuild.appendChild chip |> ignore
+            setHidden hud.GameOverBuild (not any)
+
 /// Force the next `update` to redraw everything, after a restart resets values
 /// that would otherwise compare equal to their cached copies.
 let invalidate (hud: Hud) =
@@ -243,6 +322,9 @@ let invalidate (hud: Hud) =
     // leaving the old buttons queryable inside the hidden overlay.
     hud.Choices.innerHTML <- ""
     hud.OffersShown <- false
+    // Otherwise a restart mid-boss leaves the boss bar on screen with no boss.
+    hud.LastBossPct <- -1
+    hud.BossWrap.classList.add "hidden"
     hud.LastSecond <- -1
     hud.LastLevel <- -1
     hud.LastKills <- -1

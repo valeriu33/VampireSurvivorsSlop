@@ -139,7 +139,7 @@ let private countingSort (r: Renderer) =
 /// `alpha` is the fraction of the way from the previous tick to the current
 /// one, so movement stays smooth when the display rate and the 30 Hz
 /// simulation rate disagree.
-let draw (r: Renderer) (g: GameState) (alpha: float32) (nowSec: float32) =
+let draw (r: Renderer) (g: GameState) (alpha: float32) (nowSec: float32) (dtSec: float32) =
     let w = g.World
     let cam = r.Cam
 
@@ -149,6 +149,12 @@ let draw (r: Renderer) (g: GameState) (alpha: float32) (nowSec: float32) =
         let px = lerpf (ix w.Prevx p) (ix w.Px p) alpha
         let py = lerpf (ix w.Prevy p) (ix w.Py p) alpha
         centerOn cam px py
+
+    // Shake displaces the camera itself, so the ground tiling and every sprite
+    // move together - the view is knocked, not the contents.
+    let struct (shakeX, shakeY) = shakeStep cam dtSec nowSec
+    cam.X <- cam.X + shakeX
+    cam.Y <- cam.Y + shakeY
 
     r.Ground.tilePosition.set (float (-cam.X + cam.W * 0.5f), float (-cam.Y + cam.H * 0.5f))
 

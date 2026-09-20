@@ -7,8 +7,9 @@
 /// them, and nothing branches on their presence.
 ///
 /// (Phase 4 note: when the server becomes authoritative, applying a snapshot
-/// will have to leave entities carrying `Comp.Cosmetic` alone rather than
-/// reconciling them away.)
+/// will have to leave these alone rather than reconciling them away. They are
+/// identifiable by sprite kind - Digit and Puff are client-only - but a
+/// dedicated component flag would be the honest fix at that point.)
 module Vss.Client.Fx
 
 open Vss.Shared.Core
@@ -16,6 +17,7 @@ open Vss.Shared.Ecs
 open Vss.Shared.Content
 open Vss.Shared.Sim
 open Vss.Client.Audio
+open Vss.Client.Iso
 
 /// Cosmetics get their own RNG. Drawing from the simulation's stream would
 /// advance it by an amount that depends on what the *client* chose to draw,
@@ -126,7 +128,7 @@ let private countDigits (w: World) =
 
 /// Drain this frame's events: play their sounds and spawn their cosmetics.
 /// Called once per frame, after the simulation has stepped.
-let present (g: GameState) (onPlayerHurt: unit -> unit) =
+let present (g: GameState) (cam: Camera) (onPlayerHurt: unit -> unit) =
     let ev = g.Events
     beginFrame ()
 
@@ -150,7 +152,21 @@ let present (g: GameState) (onPlayerHurt: unit -> unit) =
             // Always shown, cap or no cap: the player taking damage is the one
             // number that must never be dropped.
             liveDigits <- liveDigits + spawnNumber g v x y PlayerHurtTint 1.15f
+            addTrauma cam Shake.PlayerHurt
             onPlayerHurt ()
+        elif kind = Ev.NovaCast then
+            addTrauma cam Shake.Nova
+        elif kind = Ev.EliteDied then
+            addTrauma cam Shake.EliteDied
+            spawnPuff g x y EliteTint |> ignore
+        elif kind = Ev.BossSpawned then
+            addTrauma cam Shake.BossSpawn
+        elif kind = Ev.BossDied then
+            addTrauma cam Shake.BossDied
+            // Three staggered puffs read as something large coming apart.
+            spawnPuff g x y 0xFF6B57 |> ignore
+            spawnPuff g (x + 0.7f) (y - 0.4f) 0xFFC24D |> ignore
+            spawnPuff g (x - 0.6f) (y + 0.5f) 0xFF6B57 |> ignore
 
         i <- i + 1
 

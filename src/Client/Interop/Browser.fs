@@ -20,6 +20,11 @@ let pixelRatio () =
 
 let byId (id: string) : HTMLElement = document.getElementById id
 
+/// Whether the viewer has asked for reduced motion. Camera shake honours this;
+/// it is the one effect here likely to actually bother someone.
+[<Emit("(function(){try{return window.matchMedia('(prefers-reduced-motion: reduce)').matches}catch(e){return false}})()")>]
+let prefersReducedMotion () : bool = jsNative
+
 /// Keep the screen awake during a run. Not supported everywhere, and a
 /// rejection is unremarkable, so failures are swallowed.
 let requestWakeLock () : unit =

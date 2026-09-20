@@ -97,6 +97,48 @@ let enemies : EnemyDef[] =
          UnlockAt = 100.0f
          Weight = 0.32f } |]
 
+// ---------------------------------------------------------------------------
+// Elites and bosses
+// ---------------------------------------------------------------------------
+
+/// Elites are a modifier on any enemy type rather than their own entry: the
+/// crowd stays the crowd, but some of it is worth stopping for.
+let EliteHpMul : float32 = 4.5f
+let EliteDamageMul : float32 = 1.35f
+let EliteSpeedMul : float32 = 0.92f
+let EliteScaleMul : float32 = 1.4f
+let EliteXpMul : float32 = 6.0f
+let EliteTint = 0xFFC24D
+
+/// Chance any given spawn is an elite. None early - the first minute is for
+/// learning the controls - then a slow ramp to a ceiling.
+let eliteChance (t: float32) =
+    if t < 55.0f then 0.0f else clampf 0.0f 0.085f ((t - 55.0f) / 2600.0f)
+
+/// Seconds at which a boss arrives. Spaced so each one lands as the run's
+/// current peak rather than as another enemy.
+let bossTimes : float32[] = [| 120.0f; 300.0f; 480.0f; 660.0f |]
+
+type BossDef =
+    { Hp: float32
+      Speed: float32
+      Radius: float32
+      Damage: float32
+      XpValue: float32
+      Scale: float32
+      Tint: int }
+
+/// Each boss is harder than the last; `index` is how many have already come.
+let bossFor (index: int) =
+    let step = float32 index
+    { Hp = 360.0f * (1.0f + 0.9f * step)
+      Speed = 1.55f + 0.08f * step
+      Radius = 1.35f
+      Damage = 26.0f + 6.0f * step
+      XpValue = 140.0f * (1.0f + 0.5f * step)
+      Scale = 2.7f
+      Tint = 0xFF6B57 }
+
 /// Difficulty ramp. Enemy HP climbs faster than their damage so the run gets
 /// longer rather than spikier - a sudden damage cliff just feels unfair.
 let hpScale (t: float32) = 1.0f + t / 110.0f
@@ -298,6 +340,60 @@ let GemSoftCap = 90
 
 /// Pull applied to gems outside the magnet radius once the cap is exceeded.
 let GemFlushPull : float32 = 7.0f
+
+/// While a boss is alive the ordinary spawn pulse is slowed by this factor.
+///
+/// Without it a boss fight is unwinnable rather than hard: at the level the
+/// first boss arrives the bolt has no pierce, so every shot is consumed by the
+/// first crowd enemy it touches and the boss takes no direct damage at all -
+/// measured at 360 HP surviving 56 seconds. Thinning the crowd opens firing
+/// lines instead of lowering the boss's health.
+let BossSpawnSlowdown : float32 = 2.4f
+
+/// How long a boss sticks around before giving up and leaving.
+///
+/// Without a bound, a boss the player cannot kill suppresses the spawn rate
+/// for the rest of the run *and* blocks every later boss, because the schedule
+/// waits for the current one to die. Measured: a 300s run dropped from 2092
+/// kills to 592 once one boss outlived the player's damage.
+let BossDuration : float32 = 80.0f
+
+/// Outward shove applied to the crowd when a boss lands, clearing a pocket
+/// around it so the arrival reads as an event.
+let BossArrivalKnockback : float32 = 26.0f
+let BossArrivalRadius : float32 = 7.0f
+
+/// Weapons lock onto a boss inside this range in preference to the crowd.
+///
+/// Without any focus, auto-targeting picks the nearest of several hundred
+/// enemies and never lands on the boss, which then takes only incidental
+/// splash: 900 HP survived over three minutes of sustained fire.
+///
+/// The range matters as much as the rule. Measured over a 300s run:
+///
+///     range    boss 1    boss 2    crowd kills
+///       9        26s       43s        2373
+///      13        25s       17s         592
+///
+/// A wide range is a permanent target lock: while a boss is up the crowd goes
+/// entirely unkilled and the player is overrun. Keeping it short means closing
+/// with the boss to focus it down, and backing off returns the weapons to crowd
+/// control. That tension is the fight.
+let BossFocusRange : float32 = 9.0f
+
+/// Knockback multipliers by mass. A boss shoved around like a grunt stops
+/// reading as a boss.
+let EliteKnockbackMul : float32 = 0.45f
+let BossKnockbackMul : float32 = 0.10f
+
+/// Trauma added to the camera by each kind of impact, 0..1. Squared before it
+/// becomes an offset, so small values stay subtle.
+module Shake =
+    let Nova : float32 = 0.30f
+    let PlayerHurt : float32 = 0.45f
+    let EliteDied : float32 = 0.22f
+    let BossSpawn : float32 = 0.70f
+    let BossDied : float32 = 1.0f
 
 /// Gem colour tiers, purely cosmetic.
 let gemTier (xp: float32) =

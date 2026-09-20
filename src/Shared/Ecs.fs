@@ -55,6 +55,9 @@ module Comp =
     let [<Literal>] Dead = 2048
     let [<Literal>] Aura = 4096
     let [<Literal>] Damage = 8192
+    /// A tougher variant of an ordinary enemy.
+    let [<Literal>] Elite = 16384
+    let [<Literal>] Boss = 32768
 
 let inline hasAll (flags: int) (mask: int) = (flags &&& mask) = mask
 let inline hasAny (flags: int) (mask: int) = (flags &&& mask) <> 0

@@ -283,3 +283,65 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .vignette { transition: none; }
 }
+
+/* ---- boss health -------------------------------------------------------- */
+
+.boss-wrap { display: flex; flex-direction: column; gap: 3px; }
+.boss-label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #ff8a7a;
+  font-weight: 700;
+}
+.bar.boss { height: 7px; }
+.bar.boss > span { background: linear-gradient(90deg, #8f2a1e, #ff6b57); }
+
+/* ---- pause -------------------------------------------------------------- */
+
+.pause-btn {
+  position: absolute;
+  top: calc(var(--safe-top) + 58px);
+  right: 48px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(14, 17, 26, 0.6);
+  color: var(--ink);
+  font-size: 10px;
+  letter-spacing: 1px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0.55;
+}
+
+.btn.ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+/* ---- run summary build list --------------------------------------------- */
+
+.build-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+  max-width: min(420px, 100%);
+}
+.build-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 12px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.build-icon { color: var(--gold); font-size: 13px; }

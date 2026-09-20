@@ -73,6 +73,9 @@ let startRun (g: GameState) (seed: uint32) =
     g.SpawnTimer <- 0.6f
     g.EnemyCount <- 0
     g.GemCount <- 0
+    g.NextBoss <- 0
+    g.Boss <- -1
+    g.BossTimer <- 0.0f
     g.OfferCount <- 0
     Array.fill g.Levels 0 g.Levels.Length 0
     Array.fill g.WeaponCd 0 g.WeaponCd.Length 0.0f

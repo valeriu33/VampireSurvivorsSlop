@@ -34,7 +34,10 @@ let private MinGap =
        0.000 // NovaCast - rare by construction
        0.045 // GemPickup
        0.120 // PlayerHurt
-       0.000 |] // LevelUp
+       0.000 // LevelUp
+       0.060 // EliteDied
+       0.000 // BossSpawned
+       0.000 |] // BossDied
 
 /// Ceiling on voices started within one frame. Past this the frame's remaining
 /// sounds are dropped; nobody can distinguish the 13th simultaneous hit.
@@ -201,6 +204,19 @@ let play (kind: int) (value: float32) =
             elif kind = Ev.PlayerHurt then
                 tone m "triangle" 190.0 80.0 0.22 0.34
                 burst m "lowpass" 900.0 160.0 0.16 0.3
+            elif kind = Ev.EliteDied then
+                // Same shape as an ordinary death, pitched down and longer, so
+                // it lands as a heavier version of a familiar sound.
+                burst m "lowpass" 1100.0 180.0 0.26 0.4
+                tone m "triangle" 320.0 150.0 0.2 0.16
+            elif kind = Ev.BossSpawned then
+                // A slow rise, so it reads as something arriving.
+                tone m "sawtooth" 70.0 190.0 0.85 0.26
+                burst m "lowpass" 260.0 90.0 0.8 0.24
+            elif kind = Ev.BossDied then
+                burst m "lowpass" 1800.0 90.0 0.75 0.45
+                tone m "sawtooth" 220.0 45.0 0.7 0.3
+                tone m "sine" 523.25 1046.5 0.5 0.16
             elif kind = Ev.LevelUp then
                 // Major triad, arpeggiated by scheduling three short notes.
                 tone m "sine" 523.25 523.25 0.13 0.16

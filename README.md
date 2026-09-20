@@ -36,6 +36,17 @@ lifetime and depth sorting from the existing systems instead of needing a text
 renderer. Deaths leave a puff tinted to whatever died. Knockback was tripled;
 at its old strength a hit read as a number changing rather than a blow landing.
 
+**Run shape.** Elites are a modifier on any enemy type rather than their own
+entry — the crowd stays the crowd, but some of it is worth stopping for. Bosses
+arrive on a fixed schedule (2:00, 5:00, 8:00, 11:00), one at a time, each
+landing with a shockwave that shoves the crowd aside. A boss that outlives its
+welcome leaves rather than blocking the schedule forever.
+
+**Camera shake** is trauma-based: impacts add to a 0..1 pool that decays, and
+the offset is trauma *squared*, so a bolt stays subtle while a boss death
+genuinely shoves the view. The camera itself is displaced, so ground and sprites
+move together. Disabled entirely under `prefers-reduced-motion`.
+
 **Sound** is synthesised at runtime — oscillators, envelopes and one shared
 noise buffer — so the game ships no audio assets and fetches nothing. The hard
 constraint is rate, not fidelity: a nova landing in a crowd resolves a hundred
@@ -127,6 +138,10 @@ It drives the stick in an orbit rather than a straight line, and polls for the
 level-up card instead of sleeping a fixed span — a straight-line hold outruns
 its own XP gems, which made the assertion flaky.
 
+It drives pause (the clock must actually stop), and selects overlays by class
+rather than DOM order — adding the pause overlay shifted the indices and
+silently pointed an assertion at the wrong element.
+
 It also wraps `AudioContext` before the page loads and counts the nodes the
 synth creates. Sound is inaudible from a headless browser and produces no
 visible output, so counting oscillators is the only way to know it fires at all
@@ -170,6 +185,34 @@ src/Client/      F# — browser only
   Hud/             DOM overlay
   Main.fs          Bootstrap and frame loop
 ```
+
+### What a boss fight taught us about auto-targeting
+
+A boss is only a fight if your weapons can reach it, and three separate things
+stopped that:
+
+1. **Auto-targeting picks the nearest enemy**, and among several hundred that is
+   never the boss. It took only incidental splash: 900 HP survived over three
+   minutes of sustained fire.
+2. **The crowd eats the projectiles.** At the level the first boss arrives the
+   bolt has no pierce, so every shot is consumed by the first body it touches.
+   Isolating the boss cut the kill from 90s to 34s with nothing else changed.
+3. **An unkilled boss suppressed the whole run** — it slowed spawns indefinitely
+   and blocked every later boss, dropping a 300s run from 2092 kills to 592.
+
+The fixes were a short-range boss focus, a spawn slowdown and arrival shockwave
+that open firing lines, and a hard cap on how long a boss may stay. The focus
+*range* turned out to matter as much as the rule:
+
+| focus range | boss 1 | boss 2 | crowd kills |
+|---|---|---|---|
+| 9 | 26s | 43s | 2373 |
+| 13 | 25s | 17s | 592 |
+
+A wide range is a permanent target lock: while a boss is up the crowd goes
+entirely unkilled and the player is overrun. Short means closing with the boss
+to focus it down, and backing off returns the weapons to crowd control. That
+tension is the fight.
 
 ### How the simulation talks to the presentation layer
 
@@ -294,7 +337,7 @@ Recommended CC0 sources when you have unrestricted network access:
 | **0** | Toolchain, scaffold, CI | ✅ |
 | **1** | ECS core, iso renderer, camera, joystick | ✅ |
 | **2** | Vertical slice: enemies, weapons, XP, level-up, death | ✅ |
-| **3** | Content and polish: more weapons, elites, audio, juice, device perf pass | in progress — overlay, hit feedback and audio done |
+| **3** | Content and polish: more weapons, elites, audio, juice, device perf pass | in progress — overlay, hit feedback, audio, shake, elites, bosses, pause done |
 | **4** | Netcode foundation: .NET server, protocol, prediction/reconciliation, 2 players on one map | — |
 | **5** | Co-op: shared enemy pool, scaling by player count, revive, join-in-progress, AoI + delta compression | — |
 | **6** | Meta: characters, unlocks, persistence | — |

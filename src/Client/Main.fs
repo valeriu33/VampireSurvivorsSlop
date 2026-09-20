@@ -56,6 +56,9 @@ let private start () =
         let mutable vh = float32 window.innerHeight
 
         let renderer = Vss.Client.Renderer.create app atlas vw vh
+
+        // Camera shake is the one effect here that can genuinely bother people.
+        if prefersReducedMotion () then renderer.Cam.ShakeScale <- 0.0f
         let game = createGame (seedFromClock ())
         let input = emptyInput ()
         let stick = Vss.Client.Joystick.create hudRoot host
@@ -86,12 +89,30 @@ let private start () =
             applyUpgrade game id
             Vss.Client.Hud.invalidate hud
 
+        /// Pause is a phase, so the fixed-step loop simply stops advancing.
+        let togglePause () =
+            if game.Phase = Phase.Playing then game.Phase <- Phase.Paused
+            elif game.Phase = Phase.Paused then game.Phase <- Phase.Playing
+
         hud <-
-            Vss.Client.Hud.create hudRoot onPick (fun () ->
-                restart ()
-                Vss.Client.Hud.invalidate hud)
+            Vss.Client.Hud.create
+                hudRoot
+                onPick
+                (fun () ->
+                    restart ()
+                    Vss.Client.Hud.invalidate hud)
+                togglePause
 
         restart ()
+
+        // Backgrounding the tab pauses rather than banking time, so returning
+        // to a phone call does not resume mid-crowd on low health.
+        document.addEventListener (
+            "visibilitychange",
+            fun _ ->
+                if document.hidden && game.Phase = Phase.Playing then
+                    game.Phase <- Phase.Paused
+        )
 
         window.addEventListener ("resize", (fun _ -> applyViewport ()))
         window.addEventListener ("orientationchange", (fun _ -> applyViewport ()))
@@ -135,20 +156,23 @@ let private start () =
                 // player reads their options.
                 acc <- 0.0
 
+            // Present before drawing, not after. Events drained afterwards would
+            // have their damage numbers, puffs and camera shake held back until
+            // the *next* frame - a whole frame of lag on precisely the feedback
+            // this is meant to tighten.
+            Vss.Client.Fx.present game renderer.Cam (fun () -> Vss.Client.Hud.hurt hud t)
+
             let simMs = now () - simStart
 
             let alpha = float32 (acc / stepSeconds)
             let nowSec = float32 ((t - bootMs) / 1000.0)
 
             let drawStart = now ()
-            Vss.Client.Renderer.draw renderer game alpha nowSec
+            Vss.Client.Renderer.draw renderer game alpha nowSec (float32 dt)
             // CPU time to build the render list and submit draws. The GPU runs
             // on past this, so it is not the whole cost of a frame - the rAF
             // delta above is what actually bounds the frame rate.
             let drawMs = now () - drawStart
-
-            // Turn this frame's simulation events into sound and cosmetics.
-            Vss.Client.Fx.present game (fun () -> Vss.Client.Hud.hurt hud t)
 
             Vss.Client.Hud.update hud game onPick
 

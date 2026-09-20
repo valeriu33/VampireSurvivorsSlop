@@ -11,6 +11,8 @@ module Phase =
     /// Simulation frozen while the player picks an upgrade.
     let [<Literal>] LevelUp = 1
     let [<Literal>] Dead = 2
+    /// Player-requested, or forced when the tab is hidden.
+    let [<Literal>] Paused = 3
 
 /// One tick of player intent. World-space direction, magnitude 0..1.
 /// This is exactly what Phase 4 will put on the wire - nothing else about the
@@ -42,6 +44,9 @@ module Ev =
     let [<Literal>] GemPickup = 4
     let [<Literal>] PlayerHurt = 5
     let [<Literal>] LevelUp = 6
+    let [<Literal>] EliteDied = 7
+    let [<Literal>] BossSpawned = 8
+    let [<Literal>] BossDied = 9
 
 /// Capacity of the event ring. A frame that somehow produces more than this
 /// (a nova landing on a very large crowd) drops the overflow rather than
@@ -102,6 +107,13 @@ type GameState =
       /// Live pickups, tracked so the sweep-in threshold costs no extra pass.
       mutable GemCount: int
 
+      /// Index into `bossTimes` of the next boss due.
+      mutable NextBoss: int
+      /// Slot of the living boss, or -1. Drives the HUD health bar.
+      mutable Boss: int
+      /// Seconds left before the current boss leaves of its own accord.
+      mutable BossTimer: float32
+
       /// Half-extents of the viewport, in SCREEN pixels, set by the client.
       ///
       /// Spawning used to use a world-space radius big enough to enclose the
@@ -140,6 +152,9 @@ let createGame (seed: uint32) =
       SpawnTimer = 0.0f
       EnemyCount = 0
       GemCount = 0
+      NextBoss = 0
+      Boss = -1
+      BossTimer = 0.0f
       ViewHalfW = 200.0f
       ViewHalfH = 400.0f
       RollScratch = Array.zeroCreate Up.Count
@@ -178,7 +193,7 @@ let spawnPlayer (g: GameState) (x: float32) (y: float32) =
         g.Player <- e
     e
 
-let spawnEnemy (g: GameState) (defIdx: int) (x: float32) (y: float32) =
+let spawnEnemy (g: GameState) (defIdx: int) (x: float32) (y: float32) (elite: bool) =
     let w = g.World
     let e = allocEntity w
     if e >= 0 then
@@ -186,21 +201,55 @@ let spawnEnemy (g: GameState) (defIdx: int) (x: float32) (y: float32) =
         w.Flags.[e] <-
             Comp.Alive ||| Comp.Transform ||| Comp.Velocity ||| Comp.Renderable
             ||| Comp.Health ||| Comp.Enemy ||| Comp.Damage
+            ||| (if elite then Comp.Elite else Comp.None)
+        w.Px.[e] <- x
+        w.Py.[e] <- y
+        w.Prevx.[e] <- x
+        w.Prevy.[e] <- y
+        w.Radius.[e] <- d.Radius * (if elite then EliteScaleMul else 1.0f)
+        w.Speed.[e] <- d.Speed * (if elite then EliteSpeedMul else 1.0f)
+        let hp = d.Hp * hpScale g.Time * (if elite then EliteHpMul else 1.0f)
+        w.MaxHp.[e] <- hp
+        w.Hp.[e] <- hp
+        w.Damage.[e] <- d.TouchDamage * damageScale g.Time * (if elite then EliteDamageMul else 1.0f)
+        w.XpValue.[e] <- d.XpValue * (if elite then EliteXpMul else 1.0f)
+        w.Sprite.[e] <- d.Sprite
+        w.Scale.[e] <- d.Scale * (if elite then EliteScaleMul else 1.0f)
+        w.Tint.[e] <- if elite then EliteTint else 0xFFFFFF
+        w.Facing.[e] <- 2
+        g.EnemyCount <- g.EnemyCount + 1
+    e
+
+/// Bosses are enemies with their own stat block, one at a time, tracked on the
+/// GameState so the HUD can show a health bar for whatever is currently the
+/// run's problem.
+let spawnBoss (g: GameState) (index: int) (x: float32) (y: float32) =
+    let w = g.World
+    let e = allocEntity w
+    if e >= 0 then
+        let d = bossFor index
+        w.Flags.[e] <-
+            Comp.Alive ||| Comp.Transform ||| Comp.Velocity ||| Comp.Renderable
+            ||| Comp.Health ||| Comp.Enemy ||| Comp.Damage ||| Comp.Boss
         w.Px.[e] <- x
         w.Py.[e] <- y
         w.Prevx.[e] <- x
         w.Prevy.[e] <- y
         w.Radius.[e] <- d.Radius
         w.Speed.[e] <- d.Speed
-        let hp = d.Hp * hpScale g.Time
+        let hp = d.Hp
         w.MaxHp.[e] <- hp
         w.Hp.[e] <- hp
-        w.Damage.[e] <- d.TouchDamage * damageScale g.Time
+        w.Damage.[e] <- d.Damage
         w.XpValue.[e] <- d.XpValue
-        w.Sprite.[e] <- d.Sprite
+        w.Sprite.[e] <- Sprites.Brute
         w.Scale.[e] <- d.Scale
+        w.Tint.[e] <- d.Tint
         w.Facing.[e] <- 2
         g.EnemyCount <- g.EnemyCount + 1
+        g.Boss <- e
+        g.BossTimer <- BossDuration
+        emit g.Events Ev.BossSpawned x y (float32 index)
     e
 
 let spawnBolt (g: GameState) (x: float32) (y: float32) (dx: float32) (dy: float32) (dmg: float32) (pierce: int) =

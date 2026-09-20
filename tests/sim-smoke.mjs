@@ -204,6 +204,56 @@ console.log('\n=== 2b. How long a first run lasts ===')
   )
 }
 
+console.log('\n=== 2c. Elites and bosses ===')
+{
+  const g = createGame(9090)
+  startRun(g, 9090)
+  const input = emptyInput()
+  const w = g.World
+
+  let bossSpawns = 0
+  let bossDeaths = 0
+  let eliteDeaths = 0
+  let maxBossesAlive = 0
+  let sawEliteAlive = false
+
+  for (let t = 0; t < 330 * TICKS_PER_SECOND; t++) {
+    const a = (t / TICKS_PER_SECOND) * 0.45
+    input.MoveX = Math.cos(a)
+    input.MoveY = Math.sin(a)
+    if (g.Player >= 0) w.Hp[g.Player] = w.MaxHp[g.Player]
+    step(g, input)
+    if (g.Phase === 1) applyUpgrade(g, g.Offers[0])
+
+    const ev = g.Events
+    for (let i = 0; i < ev.Count; i++) {
+      if (ev.Kind[i] === 8) bossSpawns++
+      if (ev.Kind[i] === 9) bossDeaths++
+      if (ev.Kind[i] === 7) eliteDeaths++
+    }
+    ev.Count = 0 // stand in for the client drain
+
+    // Comp.Boss = 32768, Comp.Elite = 16384, Comp.Alive = 1, Comp.Dead = 2048
+    let alive = 0
+    for (let i = 0; i < w.Count; i++) {
+      const f = w.Flags[i]
+      if ((f & 1) === 0 || (f & 2048) !== 0) continue
+      if ((f & 32768) !== 0) alive++
+      if ((f & 16384) !== 0) sawEliteAlive = true
+    }
+    if (alive > maxBossesAlive) maxBossesAlive = alive
+  }
+
+  // bossTimes starts at 120s and 300s, both inside this run.
+  check(bossSpawns >= 2, `${bossSpawns} bosses arrived`)
+  check(maxBossesAlive <= 1, `never more than one boss at a time (peak ${maxBossesAlive})`)
+  check(bossDeaths >= 1, `${bossDeaths} bosses were actually killed`)
+  check(bossDeaths === bossSpawns || bossSpawns - bossDeaths === (g.Boss >= 0 ? 1 : 0),
+    `boss spawns and deaths reconcile (${bossSpawns} in, ${bossDeaths} down)`)
+  check(sawEliteAlive, 'elites appeared in the crowd')
+  check(eliteDeaths > 0, `${eliteDeaths} elites were killed`)
+}
+
 console.log('\n=== 3. Entity slots are recycled, not leaked ===')
 {
   const { w, maxLive } = playRun({ seconds: 300, seed: 999, godMode: true })
