@@ -45,6 +45,34 @@ function anyNaN(w) {
 }
 
 /**
+ * Steer toward a world point. Input is screen-space, so the world delta is
+ * projected before being normalised.
+ *
+ * Driving a rotating screen direction directly would make the test's path
+ * depend on the movement rule: once on-screen speed was equalised the same
+ * inputs traced a wider world path, the player outran the crowd, and the kill
+ * count fell by three quarters with no balance change at all. Steering to a
+ * point keeps the player in a bounded area whatever the rule underneath.
+ */
+function steerTo(g, tx, ty, input) {
+  const w = g.World
+  const p = g.Player
+  if (p < 0) return
+  const dx = tx - w.Px[p]
+  const dy = ty - w.Py[p]
+  const sx = (dx - dy) * 32
+  const sy = (dx + dy) * 16
+  const l = Math.hypot(sx, sy)
+  if (l > 1e-4) {
+    input.MoveX = sx / l
+    input.MoveY = sy / l
+  } else {
+    input.MoveX = 0
+    input.MoveY = 0
+  }
+}
+
+/**
  * Play `seconds` of a run with a scripted input pattern, auto-picking the first
  * offer on every level-up.
  */
@@ -64,9 +92,10 @@ function playRun({ seconds, seed, godMode = false, sample = false }) {
   const samples = []
 
   for (let t = 0; t < totalTicks; t++) {
-    const a = (t / TICKS_PER_SECOND) * 0.45
-    input.MoveX = Math.cos(a)
-    input.MoveY = Math.sin(a)
+    // Circle a fixed point rather than a fixed heading, so the player keeps
+    // fighting in one area instead of drifting off across the map.
+    const a = (t / TICKS_PER_SECOND) * 0.5
+    steerTo(g, Math.cos(a) * 6, Math.sin(a) * 6, input)
 
     if (godMode && g.Player >= 0) w.Hp[g.Player] = w.MaxHp[g.Player]
 
@@ -145,6 +174,59 @@ console.log('\n=== 1b. The presentation event stream ===')
   }
   check(ev.Count > 0, `buffer refills after a drain (${ev.Count} in one second)`)
   check(ev.Count < ev.Kind.length, 'one second of play stays well inside the cap')
+}
+
+console.log('\n=== 1c. Movement reads the same speed in every direction ===')
+{
+  // The projection makes a world unit cover twice the pixels going east-west
+  // as north-south, so constant world speed looked twice as fast sideways -
+  // which reads as a bug, not as perspective. The simulation compensates; this
+  // checks the compensation by measuring what actually happens on screen.
+  const HW = 32
+  const HH = 16
+  const isoX = (x, y) => (x - y) * HW
+  const isoY = (x, y) => (x + y) * HH
+
+  const measured = []
+  for (let d = 0; d < 8; d++) {
+    const a = (d * Math.PI) / 4
+    const g = createGame(1)
+    startRun(g, 1)
+    const w = g.World
+    const p = g.Player
+    const input = emptyInput()
+    input.MoveX = Math.cos(a)
+    input.MoveY = Math.sin(a)
+    const x0 = w.Px[p]
+    const y0 = w.Py[p]
+    for (let t = 0; t < TICKS_PER_SECOND; t++) {
+      w.Hp[g.Player] = w.MaxHp[g.Player] // isolate movement from dying
+      step(g, input)
+    }
+    const dx = w.Px[p] - x0
+    const dy = w.Py[p] - y0
+    measured.push({
+      screen: Math.hypot(isoX(dx, dy), isoY(dx, dy)),
+      world: Math.hypot(dx, dy)
+    })
+  }
+
+  const screen = measured.map((m) => m.screen)
+  const spread = Math.max(...screen) / Math.min(...screen)
+  console.log(`  screen speed ${Math.min(...screen).toFixed(1)}-${Math.max(...screen).toFixed(1)} px/s`)
+  check(spread < 1.02, `on-screen speed is uniform across 8 directions (${spread.toFixed(3)}x spread)`)
+
+  // World speed is what varies instead, and it must stay centred so the balance
+  // against enemies - who move at constant world speed - is unchanged. The
+  // invariant is on the two extremes (straight across vs straight up), not on
+  // a mean over sampled directions, which over-weights the diagonals.
+  const world = measured.map((m) => m.world)
+  const centre = Math.sqrt(Math.min(...world) * Math.max(...world))
+  console.log(`  world speed  ${Math.min(...world).toFixed(2)}-${Math.max(...world).toFixed(2)} u/s`)
+  check(
+    Math.abs(centre - 3.4) < 0.05,
+    `world speed stays centred on the base 3.4 u/s (extremes centre on ${centre.toFixed(2)})`
+  )
 }
 
 console.log('\n=== 2. The player can actually die ===')

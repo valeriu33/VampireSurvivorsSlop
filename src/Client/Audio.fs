@@ -44,6 +44,7 @@ let private MinGap =
 [<Literal>]
 let private MaxVoicesPerFrame = 12
 
+[<NoComparison; NoEquality>]
 type Mixer =
     { Ctx: IAudioContext
       Master: IGainNode

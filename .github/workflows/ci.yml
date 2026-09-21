@@ -44,6 +44,9 @@ jobs:
       - name: Simulation smoke test
         run: npm run test:sim
 
+      - name: Input unit tests
+        run: npm run test:input
+
       # The simulation test cannot see the renderer. This one boots the built
       # bundle in a phone-sized headless Chromium and checks that things
       # actually draw and respond to a drag.

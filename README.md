@@ -118,6 +118,7 @@ Two layers, because they catch entirely different things.
 
 ```bash
 npm run test:sim                       # headless simulation, no DOM
+npm run test:input                     # joystick, pure functions, no DOM
 npm run preview &                      # then, in another shell:
 npm run test:browser                   # real Chromium, phone viewport
 ```
@@ -135,6 +136,12 @@ check exists because the balance had only ever been validated with god mode on,
 and an actual first run was lasting **39 seconds**. It now lands around 130s
 for that deliberately mediocre play, which a coherent build and real kiting
 should extend several times over.
+
+**`tests/input-check.mjs`** drives `readInto` directly from the compiled
+module — it is a pure function, so a record literal stands in for a real stick.
+It pins the two properties that are easy to regress and hard to see: throttle
+must not depend on deflection, and direction must stay analog rather than
+snapping to eight ways.
 
 **`tests/browser-check.mjs`** boots the built bundle in a phone-sized headless
 Chromium, drives the joystick with real pointer events, and checks what only a
@@ -269,10 +276,29 @@ play the same game, and it is a hard prerequisite for the Phase 4 server.
 
 **Isometric is a render-time projection only.** The simulation is a flat 2D
 plane; `screenX = (wx - wy) * 32`, `screenY = (wx + wy) * 16`. The joystick is
-**screen-aligned** — pushing up moves the character up the screen — and the
-inverse projection turns that into world velocity. Facing is one of 8 screen
-directions, but movement itself stays analog so it feels smooth rather than
-notched.
+**screen-aligned** — pushing up moves the character up the screen. Facing is one
+of 8 screen directions, but the direction of travel stays analog so it feels
+smooth rather than notched.
+
+**On-screen speed is uniform in every direction.** That projection makes a world
+unit cover twice the pixels going east-west as north-south, so constant *world*
+speed looks twice as fast sideways — which reads as a bug, not as perspective.
+The simulation compensates by varying world speed with heading, centred on
+`IsoRefW` so the average — and the balance against enemies, who keep constant
+world speed — is unchanged. Measured across 8 directions: 108.8 px/s each, a
+1.000× spread where it used to be 2.000×. `Player.IsoSpeedEqualise` dials the
+compensation from full down to none.
+
+**The inverse projection lives in the simulation, not the client.** It is a
+movement rule the Phase 4 server must apply identically, so what goes on the
+wire is the player's intent in *screen* space — device-independent, since the
+iso basis is fixed, and unable to encode a speed the server did not sanction.
+
+**The stick is digital in speed, analog in direction.** Any deflection past the
+dead zone is full speed; how far it is pushed says nothing. Analog throttle on a
+thumb stick mostly reads as inconsistent speed. The stick also stays where the
+thumb first landed rather than following the finger, which used to slide the
+centre — and so the heading it reads — out from under the player.
 
 **Depth sorting without a sort.** Isometric depth is exactly screen Y, and
 screen Y is bounded by the viewport, so visible entities are bucketed by integer

@@ -37,6 +37,17 @@ let IsoHalfH : float32 = 16.0f
 let inline isoX (wx: float32) (wy: float32) = (wx - wy) * IsoHalfW
 let inline isoY (wx: float32) (wy: float32) = (wx + wy) * IsoHalfH
 
+/// World-space magnitude of the unit screen vector, in the direction where it
+/// is the geometric mean of the two extremes.
+///
+/// Under this projection a world unit travelled along the screen's X axis
+/// covers twice the pixels it does along Y, so constant *world* speed reads as
+/// movement that is twice as fast east-west as north-south. Equalising that
+/// means varying world speed by direction, and this is the reference the
+/// variation is centred on, so the average speed is unchanged whichever way
+/// the rule is dialled. It works out to exactly 1/IsoHalfW.
+let IsoRefW : float32 = 1.0f / IsoHalfW
+
 /// Screen delta -> world delta. Inverse of the projection above.
 /// Used to turn a screen-aligned joystick push into world-space velocity.
 let inline screenToWorldX (sx: float32) (sy: float32) =

@@ -4,9 +4,9 @@
 /// on a phone held one-handed, a fixed stick is a constant reach, and reaching
 /// is what makes players drop the device.
 ///
-/// Directions are SCREEN-aligned. Pushing up moves the character up the screen,
-/// which under an isometric projection is a diagonal in world space - the
-/// inverse projection lives in Shared.Core.
+/// Directions are SCREEN-aligned: pushing up moves the character up the screen.
+/// This module deals only in screen space and hands that straight to the
+/// simulation, which owns the inverse projection and the speed rule.
 module Vss.Client.Joystick
 
 open Browser
@@ -16,11 +16,13 @@ open Vss.Client.BrowserEx
 open Vss.Shared.Core
 open Vss.Shared.Sim
 
-/// Screen-pixel deflection at which the stick reads as fully pushed.
+/// Screen-pixel deflection at which the knob stops travelling. Speed does not
+/// depend on it - see `readInto`.
 let private MaxRadius = 58.0
 
-/// Deflection below which input is ignored, to absorb thumb jitter.
-let private DeadZone = 5.0
+/// Deflection below which input is ignored, to absorb thumb jitter. Larger now
+/// that any deflection past it means full speed.
+let private DeadZone = 8.0
 
 [<NoComparison; NoEquality>]
 type Joystick =
@@ -99,13 +101,12 @@ let create (hudRoot: HTMLElement) (surface: HTMLElement) =
                 let dx = j.CurX - j.OriginX
                 let dy = j.CurY - j.OriginY
                 let d = sqrt (dx * dx + dy * dy)
+                // The stick stays where the thumb first landed. It used to
+                // follow the finger once the drag passed the rim, which meant
+                // the centre - and so the direction the stick reads - kept
+                // sliding out from under you.
                 if d > MaxRadius then
-                    // Drag the stick along with the thumb once it hits the rim,
-                    // so a long swipe never runs out of travel.
                     let s = MaxRadius / d
-                    j.OriginX <- j.CurX - dx * s
-                    j.OriginY <- j.CurY - dy * s
-                    place j
                     moveKnob j (dx * s) (dy * s)
                 else
                     moveKnob j dx dy)
@@ -148,9 +149,11 @@ let readInto (j: Joystick) (input: Input) =
         let dy = j.CurY - j.OriginY
         let d = sqrt (dx * dx + dy * dy)
         if d > DeadZone then
-            let mag = min 1.0 (d / MaxRadius)
-            sx <- float32 (dx / d * mag)
-            sy <- float32 (dy / d * mag)
+            // Full speed at any deflection past the dead zone. The stick sets
+            // the direction; how far it is pushed says nothing. Analogue
+            // throttle on a thumb stick mostly reads as inconsistent speed.
+            sx <- float32 (dx / d)
+            sy <- float32 (dy / d)
     else
         if j.KeyLeft then sx <- sx - 1.0f
         if j.KeyRight then sx <- sx + 1.0f
@@ -161,19 +164,8 @@ let readInto (j: Joystick) (input: Input) =
             sx <- sx / m
             sy <- sy / m
 
-    if sx = 0.0f && sy = 0.0f then
-        input.MoveX <- 0.0f
-        input.MoveY <- 0.0f
-    else
-        // Screen intent -> world direction, renormalised so that diagonal
-        // screen pushes are not faster than axis-aligned ones.
-        let mag = min 1.0f (len sx sy)
-        let wx = screenToWorldX sx sy
-        let wy = screenToWorldY sx sy
-        let wl = len wx wy
-        if wl > 0.0001f then
-            input.MoveX <- wx / wl * mag
-            input.MoveY <- wy / wl * mag
-        else
-            input.MoveX <- 0.0f
-            input.MoveY <- 0.0f
+    // Hand the simulation the raw screen-space intent. The inverse projection
+    // and the speed rule live in `inputSystem`, so the server applies exactly
+    // the same ones.
+    input.MoveX <- sx
+    input.MoveY <- sy

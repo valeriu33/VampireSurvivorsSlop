@@ -223,6 +223,41 @@ check(
 check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join('; ') : ''}`)
 
 console.log('')
+
+// ---- the stick stays anchored ------------------------------------------
+// It used to follow the finger once the drag passed the rim, sliding the
+// centre - and so the direction it reads - out from under the player. Needs
+// its own press: by the assertions above the stick has been released.
+await page.mouse.move(ORIGIN_X, ORIGIN_Y)
+await page.mouse.down()
+await page.waitForTimeout(120)
+const anchored = await page.evaluate(() => {
+  const el = document.querySelector('#stick')
+  return { left: el.style.left, top: el.style.top }
+})
+await page.mouse.move(ORIGIN_X + 320, ORIGIN_Y + 260, { steps: 8 })
+await page.waitForTimeout(150)
+const dragged = await page.evaluate(() => {
+  const el = document.querySelector('#stick')
+  const knob = document.querySelector('#stick-knob')
+  const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(knob.style.transform || '')
+  return {
+    left: el.style.left,
+    top: el.style.top,
+    knobDist: m ? Math.hypot(Number(m[1]), Number(m[2])) : -1
+  }
+})
+await page.mouse.up()
+
+check(
+  dragged.left === anchored.left && dragged.top === anchored.top,
+  `stick stays anchored through a long drag (${anchored.left}, ${anchored.top})`
+)
+check(
+  dragged.knobDist > 50 && dragged.knobDist < 62,
+  `knob clamps to the rim instead of running away (${dragged.knobDist.toFixed(1)}px)`
+)
+
 // ---- boss arrival, in a second short session -----------------------------
 // Bosses are gated on elapsed time, so `?skip` fast-forwards the clock rather
 // than spending two real minutes waiting for the first one. The skip advances

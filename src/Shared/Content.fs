@@ -47,6 +47,19 @@ module Player =
     let IFrames : float32 = 0.8f
     let RegenPerSecond : float32 = 0.8f
 
+    /// How much of the isometric speed anisotropy to cancel out, 0..1.
+    ///
+    /// The projection makes a world unit cover twice the pixels going east-west
+    /// as north-south, so constant world speed *looks* twice as fast sideways -
+    /// which reads as a bug rather than as perspective. At 1 the player moves
+    /// at a constant speed on screen, whichever way they go, by varying world
+    /// speed to compensate. At 0 the raw projection shows through.
+    ///
+    /// The compensation is centred on `IsoRefW`, so average speed - and with it
+    /// the balance against enemies, which keep constant world speed - is the
+    /// same at any setting.
+    let IsoSpeedEqualise : float32 = 1.0f
+
 // ---------------------------------------------------------------------------
 // Enemies
 // ---------------------------------------------------------------------------

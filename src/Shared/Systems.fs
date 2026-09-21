@@ -36,19 +36,44 @@ let timerSystem (g: GameState) (dt: float32) =
 // Input
 // ---------------------------------------------------------------------------
 
+/// Turn screen-space intent into world velocity.
+///
+/// The inverse projection lives here rather than in the client because it is a
+/// movement rule, not a presentation detail: the Phase 4 server has to apply
+/// exactly the same one to the inputs it receives. What goes on the wire is the
+/// player's intent in screen space, which is device-independent - the iso basis
+/// is fixed - and cannot encode a speed the server did not sanction.
 let inputSystem (g: GameState) (input: Input) (_dt: float32) =
     let w = g.World
     let p = g.Player
     if p >= 0 && hasAny (ix w.Flags p) Comp.Alive then
-        let spd = Player.Speed * speedMul g
-        let m = len input.MoveX input.MoveY
-        if m > 0.001f then
-            // Clamp rather than normalise: a half-pushed stick should walk.
-            let scale = (if m > 1.0f then 1.0f / m else 1.0f) * spd
-            setIx w.Vx p (input.MoveX * scale)
-            setIx w.Vy p (input.MoveY * scale)
-            let f = facingOf input.MoveX input.MoveY
-            if f >= 0 then setIx w.Facing p (f)
+        let throttle = len input.MoveX input.MoveY
+        if throttle > 0.001f then
+            // Clamp, never trust: a client cannot ask for more than full speed.
+            let t = if throttle > 1.0f then 1.0f else throttle
+            let ux = input.MoveX / throttle
+            let uy = input.MoveY / throttle
+
+            // World direction for this screen direction, and how much world
+            // distance a screen unit costs along it.
+            let wx = screenToWorldX ux uy
+            let wy = screenToWorldY ux uy
+            let wl = len wx wy
+
+            if wl > 1e-6f then
+                // At full equalisation the world speed scales with `wl`, which
+                // is exactly what keeps the on-screen speed constant; centred
+                // on IsoRefW so the average is unchanged.
+                let equalised = wl / IsoRefW
+                let mul = lerpf 1.0f equalised Player.IsoSpeedEqualise
+                let spd = Player.Speed * speedMul g * mul * t
+                setIx w.Vx p (wx / wl * spd)
+                setIx w.Vy p (wy / wl * spd)
+                let f = facingOf (wx / wl) (wy / wl)
+                if f >= 0 then setIx w.Facing p (f)
+            else
+                setIx w.Vx p (0.0f)
+                setIx w.Vy p (0.0f)
         else
             setIx w.Vx p (0.0f)
             setIx w.Vy p (0.0f)

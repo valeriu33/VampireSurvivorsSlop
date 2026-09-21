@@ -14,8 +14,13 @@ module Phase =
     /// Player-requested, or forced when the tab is hidden.
     let [<Literal>] Paused = 3
 
-/// One tick of player intent. World-space direction, magnitude 0..1.
-/// This is exactly what Phase 4 will put on the wire - nothing else about the
+/// One tick of player intent, in SCREEN space, magnitude 0..1 as throttle.
+///
+/// Screen space rather than world space so the inverse projection - and with it
+/// the speed rule - stays in the simulation, where the server applies the same
+/// one. The iso basis is fixed, so this is device-independent.
+///
+/// This is exactly what Phase 4 will put on the wire; nothing else about the
 /// player's state is client-authored.
 type Input =
     { mutable MoveX: float32
